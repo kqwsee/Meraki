@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "meraki-backend",
+      "runtimeExecutable": "D:\\Meraki\\backend\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "D:\\Meraki\\backend", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "meraki-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "D:\\Meraki\\frontend", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
