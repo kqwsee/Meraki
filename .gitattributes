@@ -4,6 +4,8 @@
 # shell hooks must keep LF or sh fails on Windows checkouts
 .githooks/* text eol=lf
 *.sh text eol=lf
+# cmd.exe misreads labels and goto in LF-only batch files
+*.cmd text eol=crlf
 
 *.png binary
 *.jpg binary
