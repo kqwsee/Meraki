@@ -57,6 +57,9 @@ code, pre { font-family: var(--mono); font-size: 13px; }
 .page { max-width: 1180px; width: 100%; margin: 0 auto; padding: 28px 20px 60px; }
 /* learning pages fill the viewport; panels scroll inside, not the page */
 .page-wide { width: 100%; padding: 0; height: calc(100vh - 56px); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+/* content stages (exam result, verification) have no panels to scroll, so they scroll themselves —
+   otherwise .page-wide's overflow:hidden clips everything past the first screen */
+.page-wide .page { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* ---------- primitives ---------- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
@@ -205,11 +208,26 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; 
 .md ul, .md ol { padding-left: 22px; margin: 0 0 .75em; }
 
 /* ---------- workspace ---------- */
-.ws { flex: 1; display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; min-height: 0; }
-.ws-left, .ws-right { background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+.ws { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.ws-bar {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 4px 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.ws-bar-btn {
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted);
+}
+.ws-bar-btn:hover { color: var(--text); }
+.ws-bar-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.ws-cols { flex: 1; display: flex; min-height: 0; }
+.ws-left, .ws-right { background: var(--surface); display: flex; flex-direction: column; min-height: 0; flex: 0 0 300px; }
 .ws-left { border-right: 1px solid var(--border); }
-.ws-right { border-left: 1px solid var(--border); }
-.ws-center { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.ws-right { border-left: 1px solid var(--border); flex-basis: 320px; }
+.ws-center { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1 1 auto; }
+.pane-hidden { display: none !important; }
+/* the panes that stay visible absorb the width freed by the hidden ones */
+.ws-cols.no-canvas .ws-left { flex: 1 1 0; }
+.ws-cols.no-canvas.no-tasks .ws-right { flex: 1 1 0; }
 .ws-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .ws-section-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .ws-scroll { overflow-y: auto; flex: 1; min-height: 0; }
@@ -253,6 +271,38 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; 
 .tool-body textarea, .tool-body input, .tool-body select { font-size: 13px; padding: 6px 8px; }
 .tool-out { background: var(--surface-2); border-radius: 6px; padding: 8px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; max-height: 220px; overflow: auto; margin-top: 8px; }
 .tool-search { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+.tool-ghost {
+  position: fixed; z-index: 200; pointer-events: none; display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; background: var(--surface); border: 1px solid var(--accent); border-radius: 8px;
+  box-shadow: var(--shadow); font-size: 13px; font-weight: 500;
+}
+.tool-ghost .ico { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: var(--accent-soft); font-size: 12px; }
+
+/* ---------- tool widgets on the canvas ---------- */
+/* z-index 3 sits above Excalidraw's drawing canvases (canvas:1, interactiveCanvas:2) and below its
+   toolbar and menu (layerUI:4) — see the zIndex tokens in @excalidraw/excalidraw's own CSS. */
+.cw-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.cw-frame {
+  position: absolute; top: 0; left: 0; pointer-events: auto; display: flex; flex-direction: column;
+  max-height: 80%; overflow: hidden; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 28px rgba(20, 24, 50, .16); will-change: transform;
+}
+.cw-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: grab; user-select: none;
+  touch-action: none; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600;
+}
+.cw-head:active { cursor: grabbing; }
+.cw-ico { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: var(--accent-soft); font-size: 12px; }
+.cw-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-btn { border: none; background: none; cursor: pointer; color: var(--muted); font: inherit; font-size: 12px; padding: 0 3px; border-radius: 4px; }
+.cw-btn:hover { background: var(--border); color: var(--text); }
+.cw-body { padding: 10px; overflow: auto; min-height: 0; font-size: 13.5px; }
+.cw-body textarea, .cw-body input, .cw-body select { font-size: 13px; padding: 6px 8px; }
+.cw-grip {
+  position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, var(--border) 50%, var(--border) 68%, transparent 68%);
+}
 
 .exam-timer { font-family: var(--mono); font-weight: 700; font-size: 18px; padding: 4px 12px; border-radius: 8px; background: var(--surface-2); }
 .exam-timer.low { background: var(--danger-soft); color: var(--danger); }
@@ -265,15 +315,15 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; 
 .flashcard { min-height: 160px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
 
 @media (max-width: 1100px) {
-  .ws { grid-template-columns: 260px minmax(0, 1fr); }
-  .ws-right { display: none; }
-  .ws.show-tools .ws-right { display: flex; position: fixed; right: 0; top: 56px; bottom: 0; width: 320px; z-index: 30; box-shadow: var(--shadow); }
+  /* the tool dock becomes an overlay so it never squeezes the canvas on narrow screens */
+  .ws-right { position: fixed; right: 0; top: 56px; bottom: 0; width: 320px; z-index: 30; flex: 0 0 auto; box-shadow: var(--shadow); }
   .chat-page { grid-template-columns: 1fr; }
   .chat-side { display: none; }
 }
 @media (max-width: 720px) {
-  .ws { grid-template-columns: 1fr; }
-  .ws-left { max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  .ws-cols { flex-direction: column; }
+  .ws-left { flex: 0 0 auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  .ws-cols.no-canvas .ws-left { flex: 1 1 auto; max-height: none; }
   .nav a { padding: 6px 8px; }
   .page { padding: 20px 16px 48px; }
   .bar-row { grid-template-columns: 120px 1fr 36px; }

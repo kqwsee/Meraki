@@ -23,11 +23,14 @@ class OpenAICompatProvider(LLMProvider):
         return settings.llm_model_smart if tier == "smart" else settings.llm_model_fast
 
     def _body(self, system: str, prompt: str, tier: str, **extra: Any) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "model": self._model(tier),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-            **extra,
         }
+        if settings.llm_max_tokens > 0:
+            body["max_tokens"] = settings.llm_max_tokens
+        body.update(extra)
+        return body
 
     async def _post(self, body: dict[str, Any]) -> dict[str, Any]:
         resp = await self._client.post("/chat/completions", json=body)

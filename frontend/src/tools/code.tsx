@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useWorkspace } from "../workspace/context";
-import { formatSql, resetSql, runJavaScript, runPython, runSql, type OutKind } from "../workspace/runners";
+import { createSqlSession, formatSql, runJavaScript, runPython, type OutKind, type SqlSession } from "../workspace/runners";
+import { useToolInstanceId, useToolState } from "./instance";
 import { logTool } from "./shared";
 
 function Runner({ lang, sample }: { lang: "python" | "javascript" | "sql"; sample: string }) {
   const ws = useWorkspace();
-  const [code, setCode] = useState(sample);
+  const instanceId = useToolInstanceId();
+  const [code, setCode] = useToolState("code", sample);
   const [out, setOut] = useState<{ k: OutKind; t: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  // every SQL widget keeps its own database, so schemas don't leak between them
+  const sqlRef = useRef<SqlSession | null>(null);
+  const sql = () => (sqlRef.current ??= createSqlSession());
   async function run() {
     setBusy(true);
     setOut([]);
@@ -17,14 +22,14 @@ function Runner({ lang, sample }: { lang: "python" | "javascript" | "sql"; sampl
       else if (lang === "javascript") await runJavaScript(code, push);
       else {
         try {
-          push("out", formatSql(await runSql(code)));
+          push("out", formatSql(await sql().exec(code)));
         } catch (e: any) {
           push("err", String(e.message ?? e));
         }
       }
     } finally {
       setBusy(false);
-      logTool(lang, { chars: code.length });
+      logTool(lang, { instance: instanceId ?? undefined, chars: code.length });
     }
   }
   return (
@@ -43,7 +48,7 @@ function Runner({ lang, sample }: { lang: "python" | "javascript" | "sql"; sampl
         }} />
       <div className="row" style={{ gap: 4 }}>
         <button className="btn sm primary" onClick={run} disabled={busy}>{busy ? <span className="spinner" /> : "▶ Ctrl+Enter"}</button>
-        {lang === "sql" && <button className="btn sm" onClick={() => { resetSql(); setOut([{ k: "sys", t: "База очищена\n" }]); }}>Сбросить БД</button>}
+        {lang === "sql" && <button className="btn sm" onClick={() => { sql().reset(); setOut([{ k: "sys", t: "База очищена\n" }]); }}>Сбросить БД</button>}
         {ws?.activePath && <span className="small muted">файл целиком — кнопкой ▶ над редактором</span>}
       </div>
       {out.length > 0 && (

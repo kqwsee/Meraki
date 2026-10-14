@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { useToolState } from "./instance";
 import { logTool, math, type ToolProps } from "./shared";
 
 export function Calculator() {
   const [expr, setExpr] = useState("");
-  const [history, setHistory] = useState<{ e: string; r: string }[]>([]);
+  // mathjs scope holds functions and is not JSON-serialisable, so only the history is persisted
+  const [history, setHistory] = useToolState<{ e: string; r: string }[]>("history", []);
   const scope = useRef<Record<string, unknown>>({});
   function calc() {
     if (!expr.trim()) return;
@@ -39,9 +41,9 @@ export function Calculator() {
 }
 
 export function Units() {
-  const [value, setValue] = useState("1");
-  const [from, setFrom] = useState("km");
-  const [to, setTo] = useState("m");
+  const [value, setValue] = useToolState("value", "1");
+  const [from, setFrom] = useToolState("from", "km");
+  const [to, setTo] = useToolState("to", "m");
   let result = "";
   try {
     result = math.format(math.unit(Number(value), from).to(to), { precision: 10 });
@@ -63,7 +65,7 @@ export function Units() {
 }
 
 export function QuickNotes({ courseId, nodeId }: ToolProps) {
-  const [text, setText] = useState("");
+  const [text, setText] = useToolState("text", "");
   const [saved, setSaved] = useState(false);
   return (
     <div className="col" style={{ gap: 6 }}>
@@ -79,10 +81,10 @@ export function QuickNotes({ courseId, nodeId }: ToolProps) {
 }
 
 export function Timer() {
-  const [mode, setMode] = useState<"stopwatch" | "countdown">("stopwatch");
-  const [running, setRunning] = useState(false);
+  const [mode, setMode] = useToolState<"stopwatch" | "countdown">("mode", "stopwatch");
+  const [running, setRunning] = useState(false); // an elapsed clock is not worth restoring
   const [ms, setMs] = useState(0);
-  const [minutes, setMinutes] = useState(25);
+  const [minutes, setMinutes] = useToolState("minutes", 25);
   useEffect(() => {
     if (!running) return;
     const start = Date.now() - (mode === "stopwatch" ? ms : minutes * 60000 - ms);
@@ -117,8 +119,8 @@ export function Timer() {
 }
 
 export function NumBase() {
-  const [value, setValue] = useState("255");
-  const [base, setBase] = useState(10);
+  const [value, setValue] = useToolState("value", "255");
+  const [base, setBase] = useToolState("base", 10);
   const n = useMemo(() => {
     const clean = value.trim().replace(/^0[xbo]/i, "");
     if (!clean) return null;
@@ -149,7 +151,7 @@ export function NumBase() {
 }
 
 export function JsonTool() {
-  const [text, setText] = useState('{"name": "Meraki", "tags": ["ai", "learning"]}');
+  const [text, setText] = useToolState("text", '{"name": "Meraki", "tags": ["ai", "learning"]}');
   const [out, setOut] = useState("");
   const run = (indent: number | undefined) => {
     try {
@@ -172,9 +174,9 @@ export function JsonTool() {
 }
 
 export function RegexTool() {
-  const [pattern, setPattern] = useState("(\\d{3})-(\\d{2})");
-  const [flags, setFlags] = useState("g");
-  const [text, setText] = useState("Коды: 123-45, 678-90 и 111-2");
+  const [pattern, setPattern] = useToolState("pattern", "(\\d{3})-(\\d{2})");
+  const [flags, setFlags] = useToolState("flags", "g");
+  const [text, setText] = useToolState("text", "Коды: 123-45, 678-90 и 111-2");
   let result: string;
   try {
     const re = new RegExp(pattern, flags.includes("g") ? flags : flags + "g");
@@ -198,7 +200,7 @@ export function RegexTool() {
 }
 
 export function TextStats() {
-  const [text, setText] = useState("");
+  const [text, setText] = useToolState("text", "");
   const words = text.match(/[\p{L}\p{N}'-]+/gu) ?? [];
   const sentences = text.split(/[.!?…]+\s/).filter((s) => s.trim()).length || (text.trim() ? 1 : 0);
   const freq: Record<string, number> = {};

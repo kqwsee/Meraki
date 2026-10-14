@@ -8,6 +8,7 @@ import httpx
 ACCOUNTS = [
     {"email": "author@meraki.test", "name": "Автор (тест)", "password": "mk-iFQdK27Nqo1M", "role": "author", "consent": True},
     {"email": "student@meraki.test", "name": "Аня (тест)", "password": "mk-2OJregZ2OQPA", "role": "student", "consent": True},
+    {"email": "novice@meraki.test", "name": "Тимур (новый)", "password": "mk-Q7wLp2Rk8Vz3", "role": "student", "consent": True},
 ]
 
 if __name__ == "__main__":

@@ -293,6 +293,7 @@ function ExamStage({ st, id, onReload, onJob, onPractice }: {
   if (ex.status === "in_progress") {
     return (
       <Workspace courseId={st.course.id} nodeId={id} stage="exam" tools={st.course.tools} domain={st.course.domain}
+        deadline={ex.started_at} timeLimitMin={ex.time_limit_min}
         taskPanel={<ExamPanel attempt={ex} onSubmitted={onReload} onActive={setActiveTask} />} />
     );
   }

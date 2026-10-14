@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useWorkspace } from "../workspace/context";
+import { useToolInstanceId, useToolState, useToolSummary } from "./instance";
 import { logTool } from "./shared";
 
 type Kind = "wire" | "resistor" | "battery" | "switch" | "lamp";
@@ -106,7 +107,8 @@ export function describeCircuit(comps: Comp[], res: Result): string {
 
 export default function Circuit() {
   const ws = useWorkspace();
-  const [comps, setComps] = useState<Comp[]>([
+  const instanceId = useToolInstanceId();
+  const [comps, setComps] = useToolState<Comp[]>("comps", [
     { id: 1, kind: "battery", a: [1, 4], b: [1, 1], value: 9 },
     { id: 2, kind: "wire", a: [1, 1], b: [4, 1], value: 0 },
     { id: 3, kind: "resistor", a: [4, 1], b: [7, 1], value: 100 },
@@ -120,12 +122,17 @@ export default function Circuit() {
   const [saved, setSaved] = useState("");
   const res = useMemo(() => solve(comps), [comps]);
   const selected = comps.find((c) => c.id === sel);
+  // two circuits on one canvas must not overwrite each other's saved schema
+  const fileBase = instanceId ? `circuits/schema-${instanceId.slice(0, 6)}` : "circuits/schema";
+
+  // the tutor sees the actual netlist and the solved currents, not just "схема есть"
+  useToolSummary(() => (comps.length ? describeCircuit(comps, res) : ""));
 
   function clickPoint(p: P) {
     if (!start) return setStart(p);
     if (key(start) !== key(p)) {
       setComps((cs) => [...cs, { id: Date.now(), kind: tool, a: start, b: p, value: KINDS[tool].def, closed: tool === "switch" ? true : undefined }]);
-      logTool("circuit", { add: tool });
+      logTool("circuit", { instance: instanceId ?? undefined, add: tool });
     }
     setStart(null);
   }
@@ -212,10 +219,10 @@ export default function Circuit() {
         <button className="btn sm" onClick={() => { setComps([]); setSel(null); }}>Очистить</button>
         {ws && (
           <button className="btn sm primary" onClick={async () => {
-            const path = "circuits/schema.txt";
+            const path = `${fileBase}.txt`;
             await ws.writeFile(path, describeCircuit(comps, res));
-            await ws.writeFile("circuits/schema.json", JSON.stringify(comps));
-            logTool("circuit", { saved: comps.length });
+            await ws.writeFile(`${fileBase}.json`, JSON.stringify(comps));
+            logTool("circuit", { instance: instanceId ?? undefined, saved: comps.length });
             setSaved(path);
           }}>Сохранить в пространство</button>
         )}

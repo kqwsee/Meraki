@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useToolState } from "./instance";
 import { logTool } from "./shared";
 
 // ---------- DNA / RNA ----------
@@ -9,7 +10,7 @@ let k = 0;
 for (const a of BASES) for (const b of BASES) for (const c of BASES) CODONS[a + b + c] = AA[k++];
 
 export function Dna() {
-  const [seq, setSeq] = useState("ATGGCCATTGTAATGGGCCGCTGAAAGGGTGCCCGATAG");
+  const [seq, setSeq] = useToolState("seq", "ATGGCCATTGTAATGGGCCGCTGAAAGGGTGCCCGATAG");
   const s = seq.toUpperCase().replace(/[^ACGTU]/g, "");
   const isRna = s.includes("U") && !s.includes("T");
   const dna = isRna ? s.replace(/U/g, "T") : s;
@@ -39,8 +40,8 @@ const normalize = (g: string) =>
   (g.match(/../g) ?? []).map((p) => p.split("").sort((x, y) => (x.toLowerCase() === y.toLowerCase() ? (x < y ? -1 : 1) : 0)).join("")).join("");
 
 export function Punnett() {
-  const [p1, setP1] = useState("AaBb");
-  const [p2, setP2] = useState("AaBb");
+  const [p1, setP1] = useToolState("p1", "AaBb");
+  const [p2, setP2] = useToolState("p2", "AaBb");
   const g1 = gametes(p1);
   const g2 = gametes(p2);
   const valid = p1.length === p2.length && p1.length % 2 === 0 && g1.length > 0 && g1.length <= 16;
@@ -156,7 +157,7 @@ function parseFormula(formula: string): Record<string, number> {
 }
 
 export function Molar() {
-  const [formula, setFormula] = useState("CuSO4·5H2O");
+  const [formula, setFormula] = useToolState("formula", "CuSO4·5H2O");
   const result = useMemo(() => {
     try {
       const counts = parseFormula(formula);
@@ -183,12 +184,14 @@ export function Molar() {
 }
 
 export function Periodic() {
-  const [sel, setSel] = useState<Element | null>(null);
+  // the atomic number is stored, not the element object, so the table stays the single source of truth
+  const [selZ, setSelZ] = useToolState<number | null>("z", null);
+  const sel: Element | null = selZ == null ? null : ELEMENTS.find((e) => e.z === selZ) ?? null;
   return (
     <div className="col" style={{ gap: 6 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(18, 1fr)", gap: 1, fontSize: 8 }}>
         {ELEMENTS.map((e) => (
-          <div key={e.z} onClick={() => { setSel(e); logTool("periodic", { el: e.symbol }); }} title={`${e.z} ${e.name}`}
+          <div key={e.z} onClick={() => { setSelZ(e.z); logTool("periodic", { el: e.symbol }); }} title={`${e.z} ${e.name}`}
             style={{
               gridRow: e.row, gridColumn: e.col, cursor: "pointer", textAlign: "center", padding: "1px 0", borderRadius: 2,
               background: sel?.z === e.z ? "var(--accent)" : e.row >= 9 ? "#fdf2f8" : e.col <= 2 ? "#fef3c7" : e.col >= 13 ? "#dcfce7" : "#e0e7ff",

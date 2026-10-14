@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     llm_model_smart: str = "sonnet"
     llm_max_concurrency: int = 3
     llm_timeout_seconds: int = 300
+    llm_max_tokens: int = 0  # 0 = don't send max_tokens to the provider
 
     claude_cli_path: str = ""  # empty = auto-detect
     claude_effort: str = "low"

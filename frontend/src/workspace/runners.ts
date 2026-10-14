@@ -11,33 +11,67 @@ const TIMEOUT_MS = 20000;
 let pyWorker: Worker | null = null;
 let pyRun = 0;
 let pyLoaded = false; // the first run also downloads Pyodide
+// One worker serves every Python widget, so replies are routed by run id and runs are serialised:
+// a single `onmessage` (the old design) made two concurrent widgets overwrite each other's handler.
+const pyHandlers = new Map<number, (msg: any) => void>();
+let pyQueue: Promise<void> = Promise.resolve();
 
 function getPy() {
-  if (!pyWorker) pyWorker = new Worker("/pyodide-worker.js");
+  if (!pyWorker) {
+    pyWorker = new Worker("/pyodide-worker.js");
+    pyWorker.onmessage = (e: MessageEvent) => pyHandlers.get(e.data?.id)?.(e.data);
+  }
   return pyWorker;
 }
 
+/** A worker stuck in an infinite loop can't be reused — terminate it and fail the runs still waiting. */
+function killPy() {
+  pyWorker?.terminate();
+  pyWorker = null;
+  pyLoaded = false;
+  const pending = [...pyHandlers.values()];
+  pyHandlers.clear();
+  for (const handler of pending) handler({ type: "killed", text: "\nВыполнение прервано: интерпретатор перезапущен.\n" });
+}
+
 export function runPython(opts: { files: Record<string, string>; entry?: string; code?: string; stdin?: string }, onOut: OnOut): Promise<void> {
-  const worker = getPy();
-  const id = ++pyRun;
-  return new Promise((resolve) => {
-    const timer = window.setTimeout(() => {
-      onOut("err", `\n⏱ Превышено время выполнения (${TIMEOUT_MS / 1000} с) — выполнение остановлено.\n`);
-      worker.terminate();
-      pyWorker = null;
-      pyLoaded = false;
-      resolve();
-    }, TIMEOUT_MS + (pyLoaded ? 0 : 60000));
-    worker.onmessage = (e: MessageEvent) => {
-      if (e.data.id !== id) return;
-      if (e.data.type === "done") {
+  const exec = () =>
+    new Promise<void>((resolve) => {
+      const worker = getPy();
+      const id = ++pyRun;
+      let settled = false;
+      let timer = 0;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
         window.clearTimeout(timer);
-        pyLoaded = true;
+        pyHandlers.delete(id);
         resolve();
-      } else onOut(e.data.type, e.data.text);
-    };
-    worker.postMessage({ id, files: opts.files, entry: opts.entry, code: opts.code ?? null, stdin: opts.stdin ?? "" });
-  });
+      };
+      timer = window.setTimeout(() => {
+        onOut("err", `\n⏱ Превышено время выполнения (${TIMEOUT_MS / 1000} с) — выполнение остановлено.\n`);
+        pyHandlers.delete(id);
+        killPy();
+        finish();
+      }, TIMEOUT_MS + (pyLoaded ? 0 : 60000));
+      pyHandlers.set(id, (msg) => {
+        if (msg.type === "done") {
+          pyLoaded = true;
+          finish();
+        } else if (msg.type === "killed") {
+          onOut("err", msg.text);
+          finish();
+        } else onOut(msg.type, msg.text);
+      });
+      worker.postMessage({ id, files: opts.files, entry: opts.entry, code: opts.code ?? null, stdin: opts.stdin ?? "" });
+    });
+
+  const next = pyQueue.then(exec, exec);
+  pyQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
 }
 
 // ---------- JavaScript ----------
@@ -93,6 +127,26 @@ export async function runSql(code: string): Promise<SqlResult> {
   if (!sqlDb) sqlDb = initSqlJs({ locateFile: () => wasmUrl }).then((SQL) => new SQL.Database());
   const db = await sqlDb;
   return db.exec(code) as SqlResult;
+}
+
+export type SqlSession = { exec: (code: string) => Promise<SqlResult>; reset: () => void };
+
+/**
+ * Database of its own, for a SQL tool that lives on the canvas: two widgets must not share a schema
+ * and one "Сбросить БД" must not wipe the other's tables.
+ */
+export function createSqlSession(): SqlSession {
+  let db: Promise<Database> | null = null;
+  const open = () => (db ??= initSqlJs({ locateFile: () => wasmUrl }).then((SQL) => new SQL.Database()));
+  return {
+    async exec(code: string) {
+      const database = await open();
+      return database.exec(code) as SqlResult;
+    },
+    reset() {
+      db = null;
+    },
+  };
 }
 
 export function formatSql(res: SqlResult): string {

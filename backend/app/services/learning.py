@@ -346,7 +346,8 @@ def render_submission(answer: str, files: list[dict[str, str]], canvas: str) -> 
     for f in files[:8]:
         parts.append(f"Файл {f.get('path')}:\n```\n{str(f.get('content', ''))[:6000]}\n```")
     if canvas:
-        parts.append(f"Холст (описание элементов):\n{canvas[:3000]}")
+        # the description also carries the tool widgets that sit on the canvas, so it needs a bit more room
+        parts.append(f"Холст (описание элементов и инструментов):\n{canvas[:4000]}")
     return "\n\n".join(parts)
 
 

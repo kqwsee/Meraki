@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { useToolState } from "./instance";
 import { logTool, math } from "./shared";
 
 const COLORS = ["#4f46e5", "#dc2626", "#16a34a", "#d97706", "#0891b2"];
 
 export function Plotter() {
-  const [fns, setFns] = useState("sin(x)\nx^2/10");
-  const [range, setRange] = useState({ x0: -10, x1: 10 });
+  const [fns, setFns] = useToolState("fns", "sin(x)\nx^2/10");
+  const [range, setRange] = useToolState("range", { x0: -10, x1: 10 });
   const [error, setError] = useState("");
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -93,9 +94,9 @@ export function Plotter() {
 }
 
 export function Matrix() {
-  const [a, setA] = useState("1 2\n3 4");
-  const [b, setB] = useState("0 1\n1 0");
-  const [expr, setExpr] = useState("A * B");
+  const [a, setA] = useToolState("a", "1 2\n3 4");
+  const [b, setB] = useToolState("b", "0 1\n1 0");
+  const [expr, setExpr] = useToolState("expr", "A * B");
   const parse = (s: string) => s.trim().split("\n").map((r) => r.trim().split(/[\s,;]+/).map(Number));
   let out: string;
   try {
