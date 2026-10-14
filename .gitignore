@@ -18,6 +18,9 @@ CLAUDE.local.md
 **/CLAUDE.local.md
 .mcp.json
 
+# Local design references (saved third-party pages, screenshots)
+design-ref/
+
 # OS / IDE
 .DS_Store
 Thumbs.db

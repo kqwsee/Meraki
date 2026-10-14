@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useToolState } from "./instance";
 import { logTool, math } from "./shared";
 
-const COLORS = ["#4f46e5", "#dc2626", "#16a34a", "#d97706", "#0891b2"];
+const COLORS = ["#2f8f84", "#c2474d", "#5a6fb0", "#b8862f", "#7a5fb0"];
 
 export function Plotter() {
   const [fns, setFns] = useToolState("fns", "sin(x)\nx^2/10");
@@ -88,7 +88,7 @@ export function Plotter() {
         <input type="number" value={range.x1} onChange={(e) => setRange({ ...range, x1: Number(e.target.value) })} />
       </div>
       {error && <div className="small" style={{ color: "var(--danger)" }}>{error}</div>}
-      <canvas ref={canvas} style={{ width: "100%", height: 220, border: "1px solid var(--border)", borderRadius: 6 }} />
+      <canvas ref={canvas} style={{ width: "100%", height: 220, border: "1px solid var(--border)", borderRadius: 10, background: "#fff" }} />
     </div>
   );
 }

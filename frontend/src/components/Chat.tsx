@@ -28,9 +28,20 @@ export default function Chat({ nodeId, courseId, stage, initial, autoStart, comp
   const rec = useMemo(() => new TypingRecorder(target, "chat"), [target]);
   const handlers = useMemo(() => textareaHandlers(rec, target, "chat"), [rec, target]);
 
+  const input = useRef<HTMLTextAreaElement>(null);
+
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // the input grows with the text (up to the CSS max-height) instead of a fixed two-line box
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+    el.style.overflowY = el.scrollHeight > 200 ? "auto" : "hidden";
+  }, [draft]);
 
   async function send(content: string | null) {
     setBusy(true);
@@ -115,8 +126,9 @@ export default function Chat({ nodeId, courseId, stage, initial, autoStart, comp
       </div>
       <div className="chat-input">
         <textarea
+          ref={input}
           value={draft}
-          rows={compact ? 2 : 2}
+          rows={1}
           placeholder={placeholder ?? "Напиши ответ или вопрос… (Enter — отправить, Shift+Enter — новая строка)"}
           onChange={(e) => setDraft(e.target.value)}
           {...handlers}

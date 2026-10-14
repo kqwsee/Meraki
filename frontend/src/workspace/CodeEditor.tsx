@@ -80,6 +80,7 @@ export default function CodeEditor({ path, value, onChange, readOnly }: {
       extensions={extensions}
       onChange={onChange}
       readOnly={readOnly}
+      theme="dark"
       basicSetup={{ foldGutter: true, highlightActiveLine: true, autocompletion: true }}
     />
   );

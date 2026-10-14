@@ -109,10 +109,14 @@ export default function NodePage() {
   return (
     <>
       <div className="learn-header">
-        <Link to={`/courses/${st.course.id}`} className="btn sm ghost">← {st.course.title}</Link>
-        <div>
-          <b>{st.node.title}</b> {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}
-          {st.progress.completed && <span className="badge success" style={{ marginLeft: 4 }}>✓ тема пройдена</span>}
+        <Link to={`/courses/${st.course.id}`} className="btn sm ghost" title="К графу курса">←</Link>
+        <div style={{ minWidth: 0 }}>
+          <div className="crumb">{st.course.title}</div>
+          <div className="row" style={{ gap: 8 }}>
+            <span className="topic">{st.node.title}</span>
+            {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}
+            {st.progress.completed && <span className="badge success">✓ тема пройдена</span>}
+          </div>
         </div>
         <span className="spacer" />
         <div className="stepper">
@@ -319,7 +323,7 @@ function VerifyView({ attempt, onDone }: { attempt: Attempt; onDone: () => void 
         return (
           <div className="card" key={v.flag_id}>
             <div className="row mb"><b>Вопрос {i + 1}</b><span className="badge">{FLAG_LABELS[v.kind] ?? v.kind}</span></div>
-            <pre className="md" style={{ background: "#0f172a", color: "#e2e8f0", padding: 12, borderRadius: 8, overflowX: "auto", fontSize: 13 }}>{v.fragment}</pre>
+            <div className="md"><pre>{v.fragment}</pre></div>
             <Markdown>{v.question}</Markdown>
             <textarea rows={4} value={answers[v.flag_id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [v.flag_id]: e.target.value }))} {...handlers} />
           </div>

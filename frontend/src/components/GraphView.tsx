@@ -60,7 +60,7 @@ export default function GraphView({
   nextId,
   showStatus = true,
   onSelect,
-  height = 520,
+  height = 600,
 }: {
   nodes: GNode[];
   edges: { source: number; target: number }[];
@@ -83,7 +83,7 @@ export default function GraphView({
         g.setEdge(String(n.id), String(ordered[i + 1].id));
         hints.push({
           id: `h${n.id}`, source: String(n.id), target: String(ordered[i + 1].id),
-          style: { strokeDasharray: "6 4", stroke: "#9333ea" }, animated: true,
+          style: { strokeDasharray: "6 4", stroke: "#a79bd0" }, animated: true,
         });
       }
     });
@@ -102,7 +102,7 @@ export default function GraphView({
         id: `${e.source}-${e.target}`,
         source: String(e.source),
         target: String(e.target),
-        style: { stroke: "#a5b4fc", strokeWidth: 2 },
+        style: { stroke: "rgba(107, 173, 165, 0.55)", strokeWidth: 1.5 },
       })),
       ...hints,
     ];
@@ -115,15 +115,17 @@ export default function GraphView({
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        colorMode="dark"
         fitView
-        fitViewOptions={{ padding: 0.12, maxZoom: 1.1 }}
-        minZoom={0.3}
+        fitViewOptions={{ padding: 0.08, maxZoom: 1.05, minZoom: 0.6 }}
+        minZoom={0.25}
+        panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
         onNodeClick={(_, n) => onSelect?.(nodes.find((x) => String(x.id) === n.id)!)}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} color="#e5e7f0" />
+        <Background gap={22} color="rgba(255, 255, 255, 0.07)" />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

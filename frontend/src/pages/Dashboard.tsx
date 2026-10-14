@@ -25,21 +25,21 @@ function CourseCard({ c }: { c: CourseSummary }) {
   return (
     <div className="card course-card">
       <div className="row">
-        <span style={{ fontSize: 24 }}>{DOMAIN_ICONS[c.domain] ?? "🎓"}</span>
-        <span className="badge">{c.domain_name}</span>
+        <span className="domain-ico">{DOMAIN_ICONS[c.domain] ?? "🎓"}</span>
+        <div className="col" style={{ gap: 2 }}>
+          <span className="eyebrow">{c.domain_name}</span>
+          <span className="course-meta">{c.nodes_count} тем · {c.author}</span>
+        </div>
         <span className="spacer" />
-        {c.is_author && <span className="badge accent">мой курс</span>}
         {c.is_author && !c.published && <span className="badge warning">черновик</span>}
+        {c.is_author && c.published && <span className="badge accent">мой курс</span>}
       </div>
       <h3>{c.title}</h3>
-      <div className="desc">{(c.summary || c.description || "").slice(0, 180)}</div>
-      <div className="small muted">
-        {c.nodes_count} тем · автор {c.author}
-      </div>
+      <div className="desc">{(c.summary || c.description || "").slice(0, 170)}</div>
       {c.enrolled && (
-        <div className="col" style={{ gap: 4 }}>
+        <div className="col" style={{ gap: 6 }}>
+          <div className="row small"><span className="muted">Прогресс</span><span className="spacer" /><span>{Math.round(c.progress)}%</span></div>
           <Progress value={c.progress} />
-          <span className="small muted">пройдено {Math.round(c.progress)}%</span>
         </div>
       )}
       <div className="row">
@@ -76,22 +76,22 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="row mb">
-        <div>
-          <h1>Привет, {user?.name}!</h1>
-          <p className="muted">Твоё обучение строится по графу знаний: каждая тема — пролог, лекция, практика и экзамен.</p>
+      <div className="hero grid-bg">
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div className="eyebrow mb">Твоё обучение</div>
+          <h1>Привет, <span className="gradient-text">{user?.name}</span></h1>
+          <p>Каждая тема — пролог, лекция, практика и экзамен. Маршрут по графу знаний подстраивается под тебя после каждой темы.</p>
         </div>
-        <span className="spacer" />
         {user?.role === "author" && (
-          <Link className="btn primary" to="/courses/new">
+          <Link className="btn primary lg" to="/courses/new">
             + Создать курс
           </Link>
         )}
       </div>
 
       {due > 0 && (
-        <div className="card mb row" style={{ background: "var(--accent-soft)", borderColor: "#c7d2fe" }}>
-          <span style={{ fontSize: 28 }}>🧠</span>
+        <div className="review-banner">
+          <span className="ico">🧠</span>
           <div>
             <b>Пора повторить: {due} карточ{due === 1 ? "ка" : due < 5 ? "ки" : "ек"}</b>
             <div className="small muted">Припоминание с интервалами — один из самых надёжных способов закрепить знания.</div>
@@ -101,21 +101,21 @@ export default function Dashboard() {
         </div>
       )}
 
-      <h2 className="mt">Мои курсы</h2>
+      <div className="section-title"><h2>Мои курсы</h2>{mine.length > 0 && <span className="muted">{mine.length}</span>}</div>
       {mine.length ? (
         <div className="grid grid-3">{mine.map((c) => <CourseCard key={c.id} c={c} />)}</div>
       ) : (
-        <div className="empty">Ты ещё не записан ни на один курс — выбери в каталоге ниже.</div>
+        <div className="empty">Пока нет курсов — выбери любой в каталоге ниже.</div>
       )}
 
       {authored.length > 0 && (
         <>
-          <h2 className="mt">Курсы, которые я создаю</h2>
+          <div className="section-title"><h2>Курсы, которые я создаю</h2><span className="muted">{authored.length}</span></div>
           <div className="grid grid-3">{authored.map((c) => <CourseCard key={c.id} c={c} />)}</div>
         </>
       )}
 
-      <h2 className="mt">Каталог</h2>
+      <div className="section-title"><h2>Каталог</h2>{catalog.length > 0 && <span className="muted">{catalog.length}</span>}</div>
       {catalog.length ? (
         <div className="grid grid-3">{catalog.map((c) => <CourseCard key={c.id} c={c} />)}</div>
       ) : (

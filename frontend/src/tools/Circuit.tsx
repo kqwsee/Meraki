@@ -146,7 +146,7 @@ export default function Circuit() {
     const my = (y1 + y2) / 2;
     const ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     const isSel = c.id === sel;
-    const stroke = isSel ? "#4f46e5" : "#1f2937";
+    const stroke = isSel ? "#2f8f84" : "#1f2937";
     const I = Math.abs(res.current?.[c.id] ?? 0);
     const glow = c.kind === "lamp" ? Math.min(1, (I * I * c.value) / 2) : 0;
     return (
@@ -182,14 +182,14 @@ export default function Circuit() {
         ))}
       </div>
       <div className="small muted">Выбери элемент и кликни две точки сетки. Клик по элементу — выделить.</div>
-      <svg width="100%" viewBox={`0 0 ${30 + (COLS - 1) * CELL} ${30 + (ROWS - 1) * CELL}`} style={{ border: "1px solid var(--border)", borderRadius: 6, background: "#fff" }}
+      <svg width="100%" viewBox={`0 0 ${30 + (COLS - 1) * CELL} ${30 + (ROWS - 1) * CELL}`} style={{ border: "1px solid var(--border)", borderRadius: 10, background: "#fff" }}
         onClick={() => setSel(null)}>
         {comps.map(drawComp)}
         {Array.from({ length: COLS * ROWS }, (_, i) => {
           const p: P = [i % COLS, Math.floor(i / COLS)];
           const isStart = start && key(start) === key(p);
           return (
-            <circle key={i} cx={X(p[0])} cy={Y(p[1])} r={isStart ? 5 : 3} fill={isStart ? "#4f46e5" : "#cbd5e1"} style={{ cursor: "crosshair" }}
+            <circle key={i} cx={X(p[0])} cy={Y(p[1])} r={isStart ? 5 : 3} fill={isStart ? "#2f8f84" : "#cbd5e1"} style={{ cursor: "crosshair" }}
               onClick={(e) => { e.stopPropagation(); clickPoint(p); }} />
           );
         })}

@@ -194,8 +194,8 @@ export function Periodic() {
           <div key={e.z} onClick={() => { setSelZ(e.z); logTool("periodic", { el: e.symbol }); }} title={`${e.z} ${e.name}`}
             style={{
               gridRow: e.row, gridColumn: e.col, cursor: "pointer", textAlign: "center", padding: "1px 0", borderRadius: 2,
-              background: sel?.z === e.z ? "var(--accent)" : e.row >= 9 ? "#fdf2f8" : e.col <= 2 ? "#fef3c7" : e.col >= 13 ? "#dcfce7" : "#e0e7ff",
-              color: sel?.z === e.z ? "#fff" : "#1c2033", fontWeight: 600,
+              background: sel?.z === e.z ? "var(--accent)" : e.row >= 9 ? "var(--bridge-soft)" : e.col <= 2 ? "var(--warning-soft)" : e.col >= 13 ? "var(--success-soft)" : "var(--blue-soft)",
+              color: sel?.z === e.z ? "var(--on-accent)" : "var(--text)", fontWeight: 600,
             }}>
             {e.symbol}
           </div>

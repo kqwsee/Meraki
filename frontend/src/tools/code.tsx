@@ -52,8 +52,8 @@ function Runner({ lang, sample }: { lang: "python" | "javascript" | "sql"; sampl
         {ws?.activePath && <span className="small muted">файл целиком — кнопкой ▶ над редактором</span>}
       </div>
       {out.length > 0 && (
-        <div className="tool-out" style={{ background: "#0f172a", color: "#e2e8f0" }}>
-          {out.map((o, i) => <span key={i} style={{ color: o.k === "err" ? "#fca5a5" : o.k === "sys" ? "#94a3b8" : undefined }}>{o.t}</span>)}
+        <div className="tool-out">
+          {out.map((o, i) => <span key={i} style={{ color: o.k === "err" ? "var(--danger)" : o.k === "sys" ? "var(--faint)" : undefined }}>{o.t}</span>)}
         </div>
       )}
     </div>

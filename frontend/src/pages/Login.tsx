@@ -37,8 +37,8 @@ export default function Login() {
       <div className="auth-card">
         <div className="auth-hero">
           <img src="/favicon.svg" alt="" />
-          <h1 style={{ marginTop: 10 }}>Meraki</h1>
-          <p className="muted">Учись с ИИ-наставником: пролог, лекция, практика, экзамен — по твоему личному маршруту.</p>
+          <h1>Учись с <span className="gradient-text">ИИ‑наставником</span></h1>
+          <p>Пролог, лекция, практика и экзамен — по твоему личному маршруту в графе знаний.</p>
         </div>
         <div className="card">
           <div className="tabs mb">

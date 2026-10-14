@@ -33,13 +33,13 @@ export default function CoursePage() {
 
   return (
     <div>
-      <div className="row mb">
-        <span style={{ fontSize: 36 }}>{DOMAIN_ICONS[c.domain] ?? "🎓"}</span>
-        <div>
-          <h1 style={{ margin: 0 }}>{c.title}</h1>
-          <div className="muted small">{c.domain_name} · автор {c.author}</div>
+      <div className="row mb" style={{ alignItems: "flex-start", gap: 16 }}>
+        <span className="domain-ico" style={{ width: 52, height: 52, fontSize: 26, borderRadius: 14 }}>{DOMAIN_ICONS[c.domain] ?? "🎓"}</span>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div className="eyebrow">{c.domain_name}</div>
+          <h1 style={{ margin: "4px 0 6px" }}>{c.title}</h1>
+          <div className="muted small">автор {c.author} · {c.nodes.filter((n) => !n.personal).length} тем</div>
         </div>
-        <span className="spacer" />
         {c.is_author && <Link className="btn" to={`/courses/${c.id}/edit`}>Редактировать</Link>}
         {!c.enrolled && c.status === "ready" && (
           <button className="btn primary lg" disabled={busy} onClick={async () => {
@@ -49,50 +49,59 @@ export default function CoursePage() {
         )}
       </div>
       <ErrorBox error={error} />
-      <p>{c.summary || c.description}</p>
+      <p className="muted" style={{ maxWidth: 820, fontSize: 15.5 }}>{c.summary || c.description}</p>
 
       {c.enrolled && (
-        <div className="card mb">
-          <div className="row">
-            <b>Прогресс</b>
-            <span className="spacer" />
-            <span className="muted small">{Math.round(c.progress)}%</span>
+        <div className="card grid-bg mb mt">
+          <div className="row" style={{ alignItems: "flex-end", gap: 24 }}>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div className="eyebrow">Прогресс по курсу</div>
+              <div className="row" style={{ alignItems: "baseline", gap: 10, margin: "6px 0 12px" }}>
+                <span className="score-big" style={{ fontSize: 44 }}>{Math.round(c.progress)}%</span>
+                <span className="muted small">пройдено</span>
+              </div>
+              <Progress value={c.progress} />
+            </div>
+            {c.route.next_node_id && (
+              <div className="col" style={{ gap: 8, minWidth: 240 }}>
+                <span className="muted small">Следующая тема</span>
+                <b style={{ color: "var(--text-strong)" }}>{c.nodes.find((n) => n.id === c.route.next_node_id)?.title}</b>
+                <Link className="btn primary" to={`/learn/${c.route.next_node_id}`}>Продолжить →</Link>
+              </div>
+            )}
           </div>
-          <div className="mt"><Progress value={c.progress} /></div>
           {c.route.message && (
             <div className="alert mt">
-              <b>🧭 Твой маршрут{c.route.replans ? ` (перестроен ${c.route.replans} раз)` : ""}:</b> {c.route.message}
-            </div>
-          )}
-          {c.route.next_node_id && (
-            <div className="row mt">
-              <span>Следующая тема: <b>{c.nodes.find((n) => n.id === c.route.next_node_id)?.title}</b></span>
-              <span className="spacer" />
-              <Link className="btn primary" to={`/learn/${c.route.next_node_id}`}>Продолжить →</Link>
+              <b>🧭 Твой маршрут{c.route.replans ? ` · перестроен ${c.route.replans} раз` : ""}</b>
+              <div style={{ marginTop: 4 }}>{c.route.message}</div>
             </div>
           )}
         </div>
       )}
 
-      <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) 320px", alignItems: "start" }}>
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) 340px", alignItems: "start" }}>
         <GraphView nodes={c.nodes} edges={c.edges} nextId={c.route.next_node_id} onSelect={open} />
-        <div className="card" style={{ padding: 14 }}>
-          <h3>Маршрут</h3>
-          <div className="col" style={{ gap: 6 }}>
+        <div className="card" style={{ padding: 18 }}>
+          <div className="eyebrow mb">Темы маршрута</div>
+          <div className="route">
             {ordered.map((n, i) => {
               const mode = n.mode && MODE_LABELS[n.mode];
               const clickable = c.enrolled && (n.unlocked || n.completed);
+              const isNext = n.id === c.route.next_node_id;
               return (
-                <div key={n.id} className="task-item" style={{ cursor: clickable ? "pointer" : "default", opacity: clickable || !c.enrolled ? 1 : 0.6, marginBottom: 0 }}
+                <div key={n.id}
+                  className={`route-step ${n.completed ? "done" : ""} ${isNext ? "next" : ""} ${c.enrolled && !clickable ? "locked" : ""}`}
                   onClick={() => clickable && open(n)} title={n.mode_reason || n.summary}>
-                  <div className="row" style={{ gap: 6 }}>
-                    <span className="muted small">{i + 1}.</span>
-                    <span className="ttitle" style={{ flex: 1 }}>{n.title}</span>
-                    {n.completed ? <span className="badge success">✓</span> : !n.unlocked ? <span>🔒</span> : null}
-                  </div>
-                  <div className="row" style={{ gap: 4, marginTop: 4 }}>
-                    {n.stage && !n.completed && <span className="badge accent">{STAGE_NAMES[n.stage]}</span>}
-                    {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}
+                  <span className="route-num">{n.completed ? "✓" : i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="route-title">{n.title}</div>
+                    {((n.stage && !n.completed) || mode || (c.enrolled && !n.unlocked && !n.completed)) && (
+                      <div className="row" style={{ gap: 4, marginTop: 6 }}>
+                        {n.stage && !n.completed && <span className="badge accent">{STAGE_NAMES[n.stage]}</span>}
+                        {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}
+                        {c.enrolled && !n.unlocked && !n.completed && <span className="badge">🔒 закрыта</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
