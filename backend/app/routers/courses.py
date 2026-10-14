@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
@@ -31,6 +32,7 @@ class CoursePatch(BaseModel):
     description: str | None = None
     domain: str | None = None
     tools: list[str] | None = None
+    route_settings: dict[str, bool] | None = None
 
 
 class NodePatch(BaseModel):
@@ -38,6 +40,24 @@ class NodePatch(BaseModel):
     summary: str | None = None
     objectives: list[str] | None = None
     concepts: list[str] | None = None
+    pinned: bool | None = None
+
+
+class NodeIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    summary: str = ""
+    objectives: list[str] = []
+    concepts: list[str] = []
+    requires: list[int] = []  # prerequisite topic ids
+
+
+class EdgeIn(BaseModel):
+    source: int  # prerequisite
+    target: int  # topic that depends on it
+
+
+class OrderIn(BaseModel):
+    node_ids: list[int]
 
 
 def course_json(db: Session, c: Course, user: User) -> dict:
@@ -46,6 +66,7 @@ def course_json(db: Session, c: Course, user: User) -> dict:
         "id": c.id, "title": c.title, "description": c.description, "domain": c.domain,
         "domain_name": DOMAINS.get(c.domain, c.domain), "status": c.status, "status_detail": c.status_detail,
         "summary": c.summary, "tools": c.tools, "published": c.published, "author": c.author.name,
+        "route_settings": route.route_settings(c),
         "is_author": c.author_id == user.id, "enrolled": enrolled,
         "nodes_count": sum(1 for n in c.nodes if n.owner_user_id is None),
         "progress": course_progress(db, user.id, c.id) if enrolled else 0,
@@ -118,6 +139,7 @@ def get_course(course_id: int, user: User = Depends(current_user), db: Session =
                 "concepts": n.concepts, "completed": n.id in done, "stage": stages.get(n.id),
                 "unlocked": n.owner_user_id is not None or prereq.get(n.id, set()) <= done,
                 "personal": n.owner_user_id is not None, "rank": rank.get(n.id),
+                "pinned": n.pinned, "order_index": n.order_index,
                 "mode": "bridge" if n.owner_user_id else (view["modes"].get(str(n.id)) or {}).get("mode", "standard"),
                 "mode_reason": (view["modes"].get(str(n.id)) or {}).get("reason", ""),
             }  # fmt: skip
@@ -139,6 +161,8 @@ def patch_course(course_id: int, body: CoursePatch, user: User = Depends(current
         course.domain = body.domain
     if body.tools is not None:
         course.tools = [t for t in body.tools if t in TOOL_CATALOG]
+    if body.route_settings is not None:
+        course.route_settings = {k: bool(body.route_settings.get(k, v)) for k, v in route.ROUTE_DEFAULTS.items()}
     db.commit()
     return course_json(db, course, user)
 
@@ -270,10 +294,100 @@ def patch_node(node_id: int, body: NodePatch, user: User = Depends(current_user)
     if node is None:
         raise HTTPException(404, "Тема не найдена")
     _own_course(db, node.course_id, user)
-    for field in ("title", "summary", "objectives", "concepts"):
+    for field in ("title", "summary", "objectives", "concepts", "pinned"):
         value = getattr(body, field)
         if value is not None:
             setattr(node, field, value)
+    db.commit()
+    return {"ok": True}
+
+
+def _author_node(db: Session, course_id: int, node_id: int) -> GraphNode:
+    node = db.get(GraphNode, node_id)
+    if node is None or node.course_id != course_id or node.owner_user_id is not None:
+        raise HTTPException(404, "Тема не найдена")
+    return node
+
+
+def _reaches(db: Session, course_id: int, start: int, goal: int) -> bool:
+    """True if `goal` is reachable from `start` along prerequisite edges (src -> dst)."""
+    succ: dict[int, list[int]] = {}
+    for e in db.scalars(select(GraphEdge).where(GraphEdge.course_id == course_id)).all():
+        succ.setdefault(e.src_id, []).append(e.dst_id)
+    stack, seen = [start], set()
+    while stack:
+        cur = stack.pop()
+        if cur == goal:
+            return True
+        if cur not in seen:
+            seen.add(cur)
+            stack.extend(succ.get(cur, []))
+    return False
+
+
+def _add_edge(db: Session, course_id: int, source: int, target: int) -> None:
+    if source == target:
+        raise HTTPException(400, "Тема не может быть пререквизитом самой себя")
+    _author_node(db, course_id, source)
+    _author_node(db, course_id, target)
+    exists = db.scalar(select(GraphEdge).where(GraphEdge.src_id == source, GraphEdge.dst_id == target))
+    if exists:
+        return
+    if _reaches(db, course_id, target, source):
+        raise HTTPException(400, "Такая связь создаст цикл: темы будут ждать друг друга")
+    db.add(GraphEdge(course_id=course_id, src_id=source, dst_id=target))
+
+
+@router.post("/courses/{course_id}/nodes")
+def create_node(course_id: int, body: NodeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    course = _own_course(db, course_id, user)
+    if course.status == "processing":
+        raise HTTPException(409, "Граф сейчас строится, подождите")
+    last = max((n.order_index for n in course.nodes if n.owner_user_id is None), default=-1)
+    base = re.sub(r"[^a-z0-9_]+", "_", body.title.lower()).strip("_")[:40] or "topic"
+    node = GraphNode(
+        course_id=course_id, key=f"{base}_{len(course.nodes) + 1}", title=body.title.strip(), summary=body.summary,
+        objectives=[o for o in body.objectives if o.strip()], concepts=[c for c in body.concepts if c.strip()],
+        order_index=last + 1,
+    )  # fmt: skip
+    db.add(node)
+    db.flush()
+    for src in body.requires:
+        _add_edge(db, course_id, src, node.id)
+    if course.status != "ready":  # a graph assembled by hand is as good as a generated one
+        course.status, course.status_detail = "ready", "Граф собран вручную"
+    db.commit()
+    return {"id": node.id}
+
+
+@router.post("/courses/{course_id}/edges")
+def add_edge(course_id: int, body: EdgeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _own_course(db, course_id, user)
+    _add_edge(db, course_id, body.source, body.target)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/courses/{course_id}/edges")
+def delete_edge(course_id: int, source: int, target: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _own_course(db, course_id, user)
+    edge = db.scalar(select(GraphEdge).where(GraphEdge.course_id == course_id, GraphEdge.src_id == source, GraphEdge.dst_id == target))
+    if edge is None:
+        raise HTTPException(404, "Связь не найдена")
+    db.delete(edge)
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/courses/{course_id}/order")
+def set_order(course_id: int, body: OrderIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The author's study order: the default route, and the fixed one when the AI may not reorder."""
+    course = _own_course(db, course_id, user)
+    author_nodes = {n.id: n for n in course.nodes if n.owner_user_id is None}
+    ids = [i for i in dict.fromkeys(body.node_ids) if i in author_nodes]
+    ids += sorted((i for i in author_nodes if i not in ids), key=lambda i: author_nodes[i].order_index)
+    for idx, nid in enumerate(ids):
+        author_nodes[nid].order_index = idx
     db.commit()
     return {"ok": True}
 
@@ -287,9 +401,12 @@ def delete_node(node_id: int, user: User = Depends(current_user), db: Session = 
     # keep the graph connected: link this node's prerequisites to its dependants
     ins = db.scalars(select(GraphEdge).where(GraphEdge.dst_id == node_id)).all()
     outs = db.scalars(select(GraphEdge).where(GraphEdge.src_id == node_id)).all()
+    existing = {(e.src_id, e.dst_id) for e in db.scalars(select(GraphEdge).where(GraphEdge.course_id == node.course_id)).all()}
     for i in ins:
         for o in outs:
-            db.add(GraphEdge(course_id=node.course_id, src_id=i.src_id, dst_id=o.dst_id))
+            if (i.src_id, o.dst_id) not in existing:
+                existing.add((i.src_id, o.dst_id))
+                db.add(GraphEdge(course_id=node.course_id, src_id=i.src_id, dst_id=o.dst_id))
     for e in [*ins, *outs]:
         db.delete(e)
     db.delete(node)

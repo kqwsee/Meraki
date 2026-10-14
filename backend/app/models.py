@@ -47,6 +47,8 @@ class Course(Base):
     status_detail: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[str] = mapped_column(Text, default="")
     tools: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # What the AI may change in learners' personal routes: {"reorder": bool, "modes": bool, "bridges": bool}
+    route_settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     published: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -92,7 +94,8 @@ class GraphNode(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     objectives: Mapped[list[str]] = mapped_column(JSON, default=list)
     concepts: Mapped[list[str]] = mapped_column(JSON, default=list)
-    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)  # author's study order
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)  # keeps its author position in every route
 
     course: Mapped[Course] = relationship(back_populates="nodes")
 

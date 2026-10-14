@@ -10,7 +10,12 @@ type CourseView = {
   nodes: (GNode & { objectives: string[]; concepts: string[]; mode_reason: string })[];
   edges: { source: number; target: number }[];
   route: { message: string; replans: number; next_node_id: number | null };
+  route_settings: { reorder: boolean; modes: boolean; bridges: boolean };
 };
+
+// with a fully fixed order every topic stays in place, so the pin carries no extra meaning
+const withoutStalePins = (c: CourseView): CourseView =>
+  c.route_settings.reorder ? c : { ...c, nodes: c.nodes.map((n) => ({ ...n, pinned: false })) };
 
 export default function CoursePage() {
   const { id } = useParams();
@@ -19,7 +24,7 @@ export default function CoursePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => api.get<CourseView>(`/courses/${id}`).then(setC).catch((e) => setError(e.message)), [id]);
+  const load = useCallback(() => api.get<CourseView>(`/courses/${id}`).then((v) => setC(withoutStalePins(v))).catch((e) => setError(e.message)), [id]);
   useEffect(() => {
     load();
   }, [load]);
@@ -94,7 +99,10 @@ export default function CoursePage() {
                   onClick={() => clickable && open(n)} title={n.mode_reason || n.summary}>
                   <span className="route-num">{n.completed ? "✓" : i + 1}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="route-title">{n.title}</div>
+                    <div className="route-title">
+                      {n.title}
+                      {n.pinned && <span title="Автор закрепил тему на этом месте"> 📌</span>}
+                    </div>
                     {((n.stage && !n.completed) || mode || (c.enrolled && !n.unlocked && !n.completed)) && (
                       <div className="row" style={{ gap: 4, marginTop: 6 }}>
                         {n.stage && !n.completed && <span className="badge accent">{STAGE_NAMES[n.stage]}</span>}

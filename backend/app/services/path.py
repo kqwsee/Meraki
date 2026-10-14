@@ -66,9 +66,53 @@ def ordered_ids(nodes: list[GraphNode], prereq: dict[int, set[int]], priority: l
     return result
 
 
+ROUTE_DEFAULTS = {"reorder": True, "modes": True, "bridges": True}
+
+
+def route_settings(course: Course) -> dict[str, bool]:
+    """What the author lets the AI change in personal routes (everything by default)."""
+    saved = course.route_settings or {}
+    return {k: bool(saved.get(k, v)) for k, v in ROUTE_DEFAULTS.items()}
+
+
+def effective_priority(course: Course, nodes: list[GraphNode], path_order: list[int]) -> list[int]:
+    """Study priority honouring the author's constraints.
+
+    Author topics follow the AI order (or the author order when reordering is off); pinned topics
+    keep their author position; personal bridges stay right before the topic they prepare for.
+    Hard prerequisites are applied afterwards by `ordered_ids`.
+    """
+    settings = route_settings(course)
+    author = sorted((n for n in nodes if n.owner_user_id is None), key=lambda n: (n.order_index, n.id))
+    by_id = {n.id: n for n in nodes}
+    shared_ids = {n.id for n in author}
+    if settings["reorder"]:
+        base = [nid for nid in path_order if nid in shared_ids]
+        base += [n.id for n in author if n.id not in base]
+    else:
+        base = [n.id for n in author]
+    # pinned topics occupy their author slots, the rest fill the gaps in `base` order
+    slots: list[int | None] = [n.id if n.pinned else None for n in author]
+    free = iter(nid for nid in base if not by_id[nid].pinned)
+    shared = [s if s is not None else next(free) for s in slots]
+    # bridges: placed before the shared topic that followed them in the stored route
+    result = list(shared)
+    for i, nid in enumerate(path_order):
+        node = by_id.get(nid)
+        if node is None or node.owner_user_id is None:
+            continue
+        target = next((x for x in path_order[i + 1 :] if x in shared_ids), None)
+        result.insert(result.index(target) if target in result else len(result), nid)
+    result += [n.id for n in nodes if n.id not in result]
+    return result
+
+
 def node_mode(db: Session, user_id: int, node: GraphNode) -> str:
     if node.owner_user_id is not None:
         return "bridge"
+    course = db.get(Course, node.course_id)
+    if course is None or not route_settings(course)["modes"]:
+        return "standard"
     path = db.scalar(select(LearnerPath).where(LearnerPath.user_id == user_id, LearnerPath.course_id == node.course_id))
     if path is None:
         return "standard"
@@ -77,11 +121,13 @@ def node_mode(db: Session, user_id: int, node: GraphNode) -> str:
 
 def route_view(db: Session, user_id: int, course_id: int) -> dict[str, Any]:
     path = ensure_path(db, user_id, course_id)
+    course = db.get(Course, course_id)
+    assert course is not None
     nodes = visible_nodes(db, course_id, user_id)
-    order = ordered_ids(nodes, hard_prereqs(db, course_id), path.order)
+    order = ordered_ids(nodes, hard_prereqs(db, course_id), effective_priority(course, nodes, path.order))
     return {
         "order": order,
-        "modes": path.modes,
+        "modes": path.modes if route_settings(course)["modes"] else {},
         "message": path.message,
         "replans": path.replans,
     }
@@ -96,6 +142,9 @@ async def replan(user_id: int, course_id: int) -> None:
         user, course = db.get(User, user_id), db.get(Course, course_id)
         if user is None or course is None:
             return
+        allowed = route_settings(course)
+        if not any(allowed.values()):
+            return  # the author fixed the route completely: nothing for the AI to decide
         nodes = visible_nodes(db, course_id, user_id)
         prereq = hard_prereqs(db, course_id)
         by_id = {n.id: n for n in nodes}
@@ -124,9 +173,17 @@ async def replan(user_id: int, course_id: int) -> None:
             ).all()
             for c in (a.weak_concepts or [])
         ]
+        pinned = [n.title for n in nodes if n.pinned and n.owner_user_id is None]
+        rules = [
+            "менять порядок тем можно" if allowed["reorder"] else "порядок тем задан автором — НЕ меняй его (order верни в текущем порядке)",
+            f"эти темы закреплены автором на своих местах: {', '.join(pinned)}" if pinned else "",
+            "режимы fast/deep назначать можно" if allowed["modes"] else "режимы назначать нельзя — у всех тем standard",
+            "мостовые темы добавлять можно" if allowed["bridges"] else "мостовые темы добавлять нельзя (bridge — пустой список)",
+        ]
         prompt = ctx.join_blocks(
             ctx.learner_block(db, user),
             ctx.course_block(course),
+            "## Ограничения автора курса\n" + "\n".join(f"- {r}" for r in rules if r),
             "## Граф и прогресс\n" + "\n".join(lines),
             f"## Слабые понятия по экзаменам\n{', '.join(dict.fromkeys(weak)) or 'нет'}",
             ctx.course_history_block(db, user_id, course_id),
@@ -145,10 +202,13 @@ async def replan(user_id: int, course_id: int) -> None:
         nodes = visible_nodes(db, course_id, user_id)
         by_key = {n.key: n for n in nodes}
         done = {p.node_id for p in db.scalars(select(NodeProgress).where(NodeProgress.user_id == user_id, NodeProgress.completed.is_(True))).all()}
-        priority = [n.id for n in nodes if n.id in done]
-        priority += [by_key[k].id for k in plan.get("order", []) if k in by_key and by_key[k].id not in priority]
+        if allowed["reorder"]:
+            priority = [n.id for n in nodes if n.id in done]
+            priority += [by_key[k].id for k in plan.get("order", []) if k in by_key and by_key[k].id not in priority]
+        else:
+            priority = list(path.order)  # effective_priority() applies the author order anyway
 
-        for b in plan.get("bridge", [])[:1]:
+        for b in plan.get("bridge", [])[: 1 if allowed["bridges"] else 0]:
             target = by_key.get(str(b.get("insert_before", "")))
             if target is None or target.id in done:
                 continue
@@ -164,7 +224,7 @@ async def replan(user_id: int, course_id: int) -> None:
             priority.insert(idx, bridge.id)
 
         modes = {}
-        for m in plan.get("modes", []):
+        for m in plan.get("modes", []) if allowed["modes"] else []:
             node = by_key.get(str(m.get("key", "")))
             if node is not None and m.get("mode") in ("fast", "standard", "deep"):
                 modes[str(node.id)] = {"mode": m["mode"], "reason": str(m.get("reason", ""))[:300]}
