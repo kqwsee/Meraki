@@ -399,8 +399,15 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 .ws-bar-btn.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-2); font-weight: 600; }
 .ws-cols { flex: 1; display: flex; min-height: 0; }
 .ws-left, .ws-right { background: var(--bg-deep); display: flex; flex-direction: column; min-height: 0; flex: 0 0 320px; }
-.ws-left { border-right: 1px solid var(--border); }
-.ws-right { border-left: 1px solid var(--border); flex-basis: 330px; }
+/* minimum sizes: side panels never get narrower than 220px, the canvas than 320px */
+.ws-left { border-right: 1px solid var(--border); flex: 0 1 var(--ws-left, 320px); min-width: 220px; }
+.ws-right { border-left: 1px solid var(--border); flex: 0 1 var(--ws-right, 330px); min-width: 220px; }
+.ws-cols:not(.no-canvas) .ws-center { min-width: 320px; }
+/* drag handles between the columns */
+.ws-split { flex: 0 0 6px; margin: 0 -3px; position: relative; z-index: 5; cursor: col-resize; touch-action: none; }
+.ws-split::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: transparent; transition: background .15s; }
+.ws-split:hover::after, .ws-split.dragging::after { background: var(--accent); }
+.ws-resizing, .ws-resizing * { cursor: col-resize !important; user-select: none !important; }
 .ws-center { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1 1 auto; }
 .pane-hidden { display: none !important; }
 /* the panes that stay visible absorb the width freed by the hidden ones */
@@ -506,6 +513,7 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 @media (max-width: 1100px) {
   /* the tool dock becomes an overlay so it never squeezes the canvas on narrow screens */
   .ws-right { position: fixed; right: 0; top: var(--topbar-h); bottom: 0; width: 330px; z-index: 30; flex: 0 0 auto; box-shadow: -20px 0 50px rgba(0, 0, 0, 0.5); }
+  .ws-split.right { display: none; }
   .chat-page { grid-template-columns: 1fr; }
   .chat-side { display: none; }
   .nav { justify-content: flex-start; }
@@ -514,6 +522,9 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
   .topbar { padding: 0 14px; gap: 12px; }
   .user-chip > span:first-child { display: none; }
   .ws-cols { flex-direction: column; }
+  .ws-split { display: none; }
+  .ws-left { min-width: 0; }
+  .ws-cols:not(.no-canvas) .ws-center { min-width: 0; min-height: 320px; }
   .ws-left { flex: 0 0 auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
   .ws-cols.no-canvas .ws-left { flex: 1 1 auto; max-height: none; }
   .nav a { padding: 6px 8px; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { tracker } from "../telemetry/tracker";
 import { describeInstanceState, dropBag, MAX_INSTANCES, newInstance, type ToolInstance } from "../tools/instance";
@@ -65,6 +65,68 @@ function useFocusMode() {
   return [focus, setFocus] as const;
 }
 
+const WIDTHS_KEY = "meraki_ws_widths";
+type Widths = { left: number; right: number };
+
+/** Column widths set by dragging the borders, remembered between visits. */
+function useColumnWidths() {
+  const [widths, setWidths] = useState<Widths>(() => {
+    const clamp = (v: unknown, d: number) => (typeof v === "number" && v >= 220 && v <= 2000 ? v : d);
+    try {
+      const saved = JSON.parse(localStorage.getItem(WIDTHS_KEY) ?? "{}") as Partial<Widths>;
+      return { left: clamp(saved.left, 320), right: clamp(saved.right, 330) };
+    } catch {
+      return { left: 320, right: 330 };
+    }
+  });
+  const [dragging, setDragging] = useState<"left" | "right" | null>(null);
+
+  function startDrag(side: "left" | "right", e: ReactPointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const start = widths[side];
+    // the canvas keeps at least 320px, a side panel stays between 220px and 60% of the window
+    const max = Math.max(260, Math.min(window.innerWidth * 0.6, window.innerWidth - widths[side === "left" ? "right" : "left"] - 320));
+    let latest = widths;
+    setDragging(side);
+    document.documentElement.classList.add("ws-resizing");
+    const move = (ev: PointerEvent) => {
+      const delta = side === "left" ? ev.clientX - startX : startX - ev.clientX;
+      latest = { ...latest, [side]: Math.round(Math.min(max, Math.max(220, start + delta))) };
+      setWidths(latest);
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      document.documentElement.classList.remove("ws-resizing");
+      setDragging(null);
+      try {
+        localStorage.setItem(WIDTHS_KEY, JSON.stringify(latest));
+      } catch {
+        /* storage may be unavailable */
+      }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  }
+
+  function reset(side: "left" | "right") {
+    const next = { ...widths, [side]: side === "left" ? 320 : 330 };
+    setWidths(next);
+    try {
+      localStorage.setItem(WIDTHS_KEY, JSON.stringify(next));
+    } catch {
+      /* storage may be unavailable */
+    }
+  }
+
+  return { widths, dragging, startDrag, reset };
+}
+
 function mmss(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
@@ -72,6 +134,7 @@ function mmss(ms: number) {
 
 export default function Workspace({ courseId, nodeId, stage, tools, domain, taskPanel, helper, deadline, timeLimitMin }: Props) {
   const [focus, setFocus] = useFocusMode();
+  const cols = useColumnWidths();
   const [files, setFiles] = useState<string[]>([]);
   const [tabs, setTabs] = useState<string[]>([CANVAS]);
   const [active, setActive] = useState<string>(CANVAS);
@@ -340,7 +403,8 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
           </button>
         </div>
 
-        <div className={`ws-cols ${panes.canvas ? "" : "no-canvas"} ${panes.tasks ? "" : "no-tasks"} ${panes.tools ? "" : "no-tools"}`}>
+        <div className={`ws-cols ${panes.canvas ? "" : "no-canvas"} ${panes.tasks ? "" : "no-tasks"} ${panes.tools ? "" : "no-tools"}`}
+          style={{ "--ws-left": `${cols.widths.left}px`, "--ws-right": `${cols.widths.right}px` } as CSSProperties}>
           <aside className={`ws-left ${panes.tasks ? "" : "pane-hidden"}`}>
             {helper && (
               <div className="tabs" style={{ padding: "0 8px" }}>
@@ -360,6 +424,11 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
               </>
             )}
           </aside>
+
+          {panes.tasks && panes.canvas && (
+            <div className={`ws-split left ${cols.dragging === "left" ? "dragging" : ""}`} onPointerDown={(e) => cols.startDrag("left", e)}
+              onDoubleClick={() => cols.reset("left")} title="Потяни, чтобы изменить ширину. Двойной клик — исходная ширина" />
+          )}
 
           <section className={`ws-center ${panes.canvas ? "" : "pane-hidden"}`}>
             <div className="ws-tabs">
@@ -409,6 +478,11 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
               </div>
             )}
           </section>
+
+          {panes.tools && panes.canvas && (
+            <div className={`ws-split right ${cols.dragging === "right" ? "dragging" : ""}`} onPointerDown={(e) => cols.startDrag("right", e)}
+              onDoubleClick={() => cols.reset("right")} title="Потяни, чтобы изменить ширину. Двойной клик — исходная ширина" />
+          )}
 
           <aside className={`ws-right ${panes.tools ? "" : "pane-hidden"}`}>
             <ToolDock tools={tools} domain={domain} courseId={courseId} nodeId={nodeId}
