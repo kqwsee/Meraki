@@ -59,12 +59,17 @@ async def summarize_session(session_id: str) -> None:
         )
         user_id = sess.user_id
         room = f"course_{nodes[0].course_id}" if nodes else "sessions"
+        touched = [n.id for n in nodes]
+    from .learning import file_dialogues
+
+    for node_id in touched:  # learner may have left mid-stage: keep their exact words anyway
+        await file_dialogues(user_id, node_id)
     try:
         result = await get_llm().complete_json(system=SESSION_MEMORY_SYSTEM, prompt=prompt, schema=SESSION_MEMORY_SCHEMA, tier="fast")
     except Exception:
         log.exception("session summary failed")
         return
-    await memory.remember(user_id, room, f"[Сессия {start:%Y-%m-%d}] {result.get('memory', '')}")
+    await memory.remember(user_id, room, f"[Сессия {start:%Y-%m-%d}] {result.get('memory', '')}", source=f"session_{session_id}")
     for fact in result.get("facts", [])[:6]:
         await memory.add_fact(user_id, fact.get("predicate", "prefers"), str(fact.get("object", "")))
 

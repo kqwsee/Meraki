@@ -68,7 +68,11 @@ class MemPalaceMCP:
             encoding="utf-8",
             errors="replace",
             bufsize=1,
-            env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+            env={
+                **__import__("os").environ,
+                "PYTHONIOENCODING": "utf-8",
+                "MEMPALACE_EMBEDDING_MODEL": settings.mempalace_embedding_model,
+            },
         )
         self._request(
             "initialize",
@@ -135,7 +139,12 @@ def stop_memory() -> None:
 def memory_status() -> dict[str, Any]:
     if _palace is None:
         return {"backend": "sqlite", "ready": True}
-    return {"backend": "mempalace", "ready": _palace.ready, "error": _palace.error}
+    return {
+        "backend": "mempalace",
+        "ready": _palace.ready,
+        "error": _palace.error,
+        "embedding_model": settings.mempalace_embedding_model,
+    }
 
 
 def _instance_id() -> str:
@@ -155,21 +164,27 @@ def _palace_ok() -> bool:
     return _palace is not None and _palace.ready
 
 
-async def remember(user_id: int, room: str, content: str) -> None:
-    drawer_id = ""
-    if _palace_ok():
-        try:
-            res = await asyncio.to_thread(
-                _palace.call,  # type: ignore[union-attr]
-                "mempalace_add_drawer",
-                {"wing": _wing(user_id), "room": room, "content": content, "added_by": "meraki"},
-            )
-            drawer_id = str(res.get("drawer_id", ""))
-        except Exception as e:
-            log.warning("MemPalace write failed: %s", e)
-    with SessionLocal() as db:
-        db.add(MemoryEntry(user_id=user_id, wing=_wing(user_id), room=room, content=content, drawer_id=drawer_id))
-        db.commit()
+MAX_DRAWER_CHARS = 90_000  # MemPalace rejects drawers above 100k characters
+RECALL_ITEM_CHARS = 1500  # keep recalled memories prompt-sized
+
+
+async def remember(user_id: int, room: str, content: str, source: str = "") -> None:
+    """File verbatim content. Very long texts (dialogue transcripts) are split into several drawers."""
+    parts = [content[i : i + MAX_DRAWER_CHARS] for i in range(0, len(content), MAX_DRAWER_CHARS)] or [""]
+    for n, part in enumerate(parts):
+        drawer_id = ""
+        if _palace_ok():
+            args = {"wing": _wing(user_id), "room": room, "content": part, "added_by": "meraki"}
+            if source:
+                args["source_file"] = source if len(parts) == 1 else f"{source}#part{n + 1}"
+            try:
+                res = await asyncio.to_thread(_palace.call, "mempalace_add_drawer", args)  # type: ignore[union-attr]
+                drawer_id = str(res.get("drawer_id", ""))
+            except Exception as e:
+                log.warning("MemPalace write failed: %s", e)
+        with SessionLocal() as db:
+            db.add(MemoryEntry(user_id=user_id, wing=_wing(user_id), room=room, content=part, drawer_id=drawer_id))
+            db.commit()
 
 
 async def recall(user_id: int, query: str, limit: int = 4) -> list[str]:
@@ -180,7 +195,7 @@ async def recall(user_id: int, query: str, limit: int = 4) -> list[str]:
                 "mempalace_search",
                 {"query": query[:240], "wing": _wing(user_id), "limit": limit},
             )
-            return [r["text"] for r in res.get("results", []) if r.get("text")]
+            return [r["text"][:RECALL_ITEM_CHARS] for r in res.get("results", []) if r.get("text")]
         except Exception as e:
             log.warning("MemPalace search failed: %s", e)
     # Fallback: crude keyword overlap over the local mirror
@@ -190,7 +205,7 @@ async def recall(user_id: int, query: str, limit: int = 4) -> list[str]:
             select(MemoryEntry).where(MemoryEntry.user_id == user_id).order_by(MemoryEntry.id.desc()).limit(200)
         ).all()
     scored = sorted(rows, key=lambda r: -sum(w in r.content.lower() for w in words))
-    return [r.content for r in scored[:limit]]
+    return [r.content[:RECALL_ITEM_CHARS] for r in scored[:limit]]
 
 
 async def add_fact(user_id: int, predicate: str, obj: str) -> None:

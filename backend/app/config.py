@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Memory: "mempalace" (MCP subprocess) or "sqlite" (built-in fallback only)
     memory_backend: str = "mempalace"
     mempalace_command: str = ""  # empty = .venv/Scripts/mempalace-mcp(.exe)
+    # Multilingual embeddings: the MemPalace default (all-MiniLM-L6-v2) is English-only.
+    # Changing the model on an existing palace requires `mempalace --palace data/palace repair rebuild-index`.
+    mempalace_embedding_model: str = "embeddinggemma"
 
     # Course material import: Wikimedia and others require a descriptive User-Agent with a URL/contact
     public_url: str = "http://localhost:5173"

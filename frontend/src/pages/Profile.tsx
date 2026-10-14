@@ -171,8 +171,17 @@ export default function Profile() {
         </p>
         {p.memory.entries.length ? p.memory.entries.map((m, i) => (
           <div key={i} className="mb small" style={{ borderLeft: "3px solid var(--accent-soft)", paddingLeft: 10 }}>
-            <div className="muted">{new Date(m.created_at + "Z").toLocaleString()} · {m.room}</div>
-            {m.content}
+            <div className="muted">
+              {new Date(m.created_at + "Z").toLocaleString()} · {m.room.endsWith("_dialogs") ? "дословный диалог" : m.room}
+            </div>
+            {m.content.length > 400 ? (
+              <details>
+                <summary style={{ cursor: "pointer" }}>{m.content.slice(0, 220)}…</summary>
+                <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+              </details>
+            ) : (
+              m.content
+            )}
           </div>
         )) : <p className="muted small">Пока пусто.</p>}
         {p.memory.facts.length > 0 && (

@@ -148,6 +148,7 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(20))  # user | assistant
     content: Mapped[str] = mapped_column(Text)
     meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # typing stats for user messages
+    memory_filed: Mapped[bool] = mapped_column(Boolean, default=False)  # verbatim copy already filed into MemPalace
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

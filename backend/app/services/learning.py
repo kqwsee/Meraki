@@ -18,6 +18,7 @@ from ..models import (
     GraphEdge,
     GraphNode,
     IntegrityFlag,
+    Message,
     Note,
     NodeProgress,
     Task,
@@ -111,6 +112,44 @@ async def refresh_memory(user_id: int, node_id: int) -> None:
         db.commit()
 
 
+STAGE_TITLES = {"prologue": "пролог", "lecture": "лекция", "practice": "практика (чат с помощником)"}
+
+
+async def file_dialogues(user_id: int, node_id: int, stages: tuple[str, ...] = ("prologue", "lecture", "practice")) -> int:
+    """Files the not-yet-saved part of each stage's dialogue into MemPalace verbatim.
+
+    MemPalace stores exact words rather than summaries, so later the tutor can recall what the
+    learner actually said (their analogies, wrong guesses, questions) — not only our summary of it.
+    """
+    filed = 0
+    for stage in stages:
+        with SessionLocal() as db:
+            node = db.get(GraphNode, node_id)
+            if node is None:
+                return filed
+            course = db.get(Course, node.course_id)
+            pending = db.scalars(
+                select(Message)
+                .where(Message.user_id == user_id, Message.node_id == node_id, Message.stage == stage, Message.memory_filed.is_(False))
+                .order_by(Message.id)
+            ).all()
+            if not any(m.role == "user" for m in pending):
+                continue  # nothing the learner said yet
+            header = (
+                f"[Диалог · {STAGE_TITLES.get(stage, stage)} · тема «{node.title}» · курс «{course.title if course else ''}» · "
+                f"{pending[0].created_at:%Y-%m-%d}]"
+            )
+            lines = [f"{'Ученик' if m.role == 'user' else 'Наставник'}: {m.content}" for m in pending]
+            transcript = header + "\n" + "\n\n".join(lines)
+            for m in pending:
+                m.memory_filed = True
+            db.commit()
+            course_id = node.course_id
+        await memory.remember(user_id, f"course_{course_id}_dialogs", transcript, source=f"node_{node_id}_{stage}")
+        filed += 1
+    return filed
+
+
 # ---------- dialogue stages ----------
 
 
@@ -189,6 +228,7 @@ async def finish_prologue(user_id: int, node_id: int) -> dict[str, Any]:
         progress.assessment = assessment
         progress.stage = "lecture"
         db.commit()
+    await file_dialogues(user_id, node_id, ("prologue",))
     return assessment
 
 
@@ -218,6 +258,7 @@ async def finish_lecture(user_id: int, node_id: int, exit_ticket: str = "") -> N
                         title=summary.get("note_title") or f"Конспект: {node.title}", content=content))  # fmt: skip
         reviews.add_cards(db, user_id, course_id, node_id, summary.get("flashcards", []))
         db.commit()
+    await file_dialogues(user_id, node_id, ("lecture",))
 
 
 # ---------- practice ----------
@@ -377,7 +418,9 @@ async def start_exam(user_id: int, node_id: int) -> int:
             db.add(_task_from_json(t, user_id, node_id, "exam", attempt.id))
         get_progress(db, user_id, node_id).stage = "exam"
         db.commit()
-        return attempt.id
+        attempt_id = attempt.id
+    await file_dialogues(user_id, node_id, ("practice",))  # the practice helper chat ends here
+    return attempt_id
 
 
 async def submit_exam(user_id: int, attempt_id: int, answers: dict[str, dict[str, Any]]) -> None:
@@ -501,7 +544,8 @@ async def _finalize_exam(user_id: int, attempt_id: int) -> None:
         )
         course_id = node.course_id
         db.commit()
-    await memory.remember(user_id, f"course_{course_id}", record)
+    await memory.remember(user_id, f"course_{course_id}", record, source=f"node_{node.id}_exam_{attempt_id}")
+    await file_dialogues(user_id, node.id)  # anything said after the stage moved on (lecture revisits etc.)
     if passed:
         await memory.add_fact(user_id, "mastered", node.title)
         from ..background import spawn

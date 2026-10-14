@@ -1,0 +1,11 @@
+# Store text files with LF in the repository regardless of each developer's OS settings,
+# so Windows (CRLF) checkouts don't show every line as changed.
+* text=auto
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.wasm binary
+*.onnx binary
