@@ -1,0 +1,28 @@
+#!/bin/sh
+# Blocks commits that contain local env files or API-key-like strings.
+# Enable once per clone:  git config core.hooksPath .githooks
+fail=0
+
+staged_env=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)\.env(\.local)?$')
+if [ -n "$staged_env" ]; then
+  echo "pre-commit: .env files hold keys and must not be committed:"
+  echo "$staged_env" | sed 's/^/  /'
+  echo "  unstage with: git restore --staged <file>"
+  fail=1
+fi
+
+# only lines added by this commit; the key is masked in the report
+leaks=$(git diff --cached -U0 --diff-filter=ACMR \
+  | grep -E '^\+[^+]' \
+  | grep -E 'sk-[A-Za-z0-9_-]{16,}|(OPENAI|ANTHROPIC)_API_KEY[ ]*=[ ]*"?[A-Za-z0-9_-]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----')
+if [ -n "$leaks" ]; then
+  echo "pre-commit: this commit looks like it contains a secret:"
+  echo "$leaks" | cut -c1-160 | sed -E 's/(sk-[A-Za-z0-9]{3})[A-Za-z0-9_-]+/\1********/g; s/(API_KEY[ ]*=[ ]*"?)[A-Za-z0-9_-]+/\1********/g' | sed 's/^/  /'
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "Commit stopped. Keep keys in backend/.env (gitignored). False alarm? git commit --no-verify"
+  exit 1
+fi
+exit 0

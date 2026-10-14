@@ -1,6 +1,9 @@
 # Store text files with LF in the repository regardless of each developer's OS settings,
 # so Windows (CRLF) checkouts don't show every line as changed.
 * text=auto
+# shell hooks must keep LF or sh fails on Windows checkouts
+.githooks/* text eol=lf
+*.sh text eol=lf
 
 *.png binary
 *.jpg binary
