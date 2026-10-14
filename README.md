@@ -58,7 +58,13 @@ cd backend && MEMPALACE_EMBEDDING_MODEL=embeddinggemma .venv/Scripts/mempalace.e
 
 Первый запуск Python в браузере загружает Pyodide (около 10 с).
 
-Тестовые учётки для локальной разработки: `backend/scripts/dev_seed.py`.
+Тестовые учётки для локальной разработки (`testuser` — ученик, `testadmin` — автор курсов, и ещё три) лежат в `backend/scripts/dev_seed.py`. Скрипт пишет их прямо в базу и сбрасывает им пароли, поэтому бэкенд для него не нужен:
+
+```bash
+cd backend && .venv/Scripts/python.exe scripts/dev_seed.py
+```
+
+Входить можно по email или по логину.
 
 ### Сменить нейросеть
 

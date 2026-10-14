@@ -46,7 +46,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
 def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(func.lower(User.email) == body.email.strip().lower()))
     if user is None or not verify_password(body.password, user.password_hash):
-        raise HTTPException(401, "Неверный email или пароль")
+        raise HTTPException(401, "Неверный логин или пароль")
     return {"token": create_token(user.id), "user": user_json(user)}
 
 

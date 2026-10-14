@@ -54,13 +54,17 @@ export default function Login() {
               </label>
             )}
             <label className="field">
-              Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+              {mode === "login" ? "Email или логин" : "Email"}
+              <input
+                type={mode === "login" ? "text" : "email"} value={email} onChange={(e) => setEmail(e.target.value)} required
+                autoComplete={mode === "login" ? "username" : "email"}
+              />
             </label>
             <label className="field">
               Пароль
               <input
-                type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
+                type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                minLength={mode === "register" ? 6 : undefined}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
               />
             </label>
