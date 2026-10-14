@@ -42,12 +42,36 @@ function initialPanes(): Panes {
   }
 }
 
+const FOCUS_KEY = "meraki_ws_focus";
+
+/** Full-screen workspace: hides the site header and the topic header, remembered between visits. */
+function useFocusMode() {
+  const [focus, setFocus] = useState(() => {
+    try {
+      return localStorage.getItem(FOCUS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle("ws-focus", focus);
+    try {
+      localStorage.setItem(FOCUS_KEY, focus ? "1" : "0");
+    } catch {
+      /* storage may be unavailable */
+    }
+    return () => document.documentElement.classList.remove("ws-focus");
+  }, [focus]);
+  return [focus, setFocus] as const;
+}
+
 function mmss(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 export default function Workspace({ courseId, nodeId, stage, tools, domain, taskPanel, helper, deadline, timeLimitMin }: Props) {
+  const [focus, setFocus] = useFocusMode();
   const [files, setFiles] = useState<string[]>([]);
   const [tabs, setTabs] = useState<string[]>([CANVAS]);
   const [active, setActive] = useState<string>(CANVAS);
@@ -304,12 +328,16 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
             🧰 Инструменты
           </button>
           <span className="spacer" />
-          {examLeft !== null && !panes.tasks && (
+          {examLeft !== null && (!panes.tasks || focus) && (
             <span className={`exam-timer ${examLeft < 5 * 60000 ? "low" : ""}`} title="Время до конца экзамена">{mmss(examLeft)}</span>
           )}
           {!panes.tasks && !panes.canvas && !panes.tools && (
             <span className="small muted">Все панели скрыты — включите нужную выше</span>
           )}
+          <button className={`ws-bar-btn ${focus ? "on" : ""}`} aria-pressed={focus} onClick={() => setFocus(!focus)}
+            title={focus ? "Вернуть верхние панели сайта и темы" : "Свернуть верхние панели: больше места для холста"}>
+            {focus ? "⤓ Показать шапку" : "⤒ Свернуть шапку"}
+          </button>
         </div>
 
         <div className={`ws-cols ${panes.canvas ? "" : "no-canvas"} ${panes.tasks ? "" : "no-tasks"} ${panes.tools ? "" : "no-tools"}`}>
