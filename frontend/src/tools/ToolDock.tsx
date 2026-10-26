@@ -1,7 +1,8 @@
 import { Suspense, useMemo, useRef, useState } from "react";
 import { tracker } from "../telemetry/tracker";
 import { useWorkspace } from "../workspace/context";
-import { TOOL_BY_ID, TOOLS, type ToolDef } from "./registry";
+import { useToolCatalog } from "./catalog";
+import { TOOLS, type ToolDef } from "./registry";
 
 /** Distance that separates a click (expand the card) from a drag (drop a widget on the canvas). */
 const DRAG_THRESHOLD = 5;
@@ -26,17 +27,19 @@ export default function ToolDock({ tools, domain, courseId, nodeId, onAddToCanva
   const drag = useRef<{ toolId: string; startX: number; startY: number; grabX: number; grabY: number; moved: boolean } | null>(null);
   const suppressClick = useRef(false);
   const ws = useWorkspace();
+  const catalog = useToolCatalog();
 
   const course = useMemo(() => {
     const ids = tools.length ? tools : TOOLS.filter((t) => t.domains.includes(domain) || t.domains.includes("general")).map((t) => t.id);
-    return [...new Set([...ids, ...extra])].map((id) => TOOL_BY_ID[id]).filter(Boolean) as ToolDef[];
-  }, [tools, domain, extra]);
+    // the author's own tools always come first
+    return [...new Set([...catalog.customIds, ...ids, ...extra])].map((id) => catalog.byId[id]).filter(Boolean) as ToolDef[];
+  }, [tools, domain, extra, catalog]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return TOOLS.filter((t) => `${t.name} ${t.keywords} ${t.id}`.toLowerCase().includes(q));
-  }, [query]);
+    return catalog.all.filter((t) => `${t.name} ${t.keywords} ${t.id}`.toLowerCase().includes(q));
+  }, [query, catalog]);
 
   function toggle(t: ToolDef) {
     if (suppressClick.current) {
@@ -104,6 +107,7 @@ export default function ToolDock({ tools, domain, courseId, nodeId, onAddToCanva
     >
       <span className="ico">{t.icon}</span>
       <span style={{ flex: 1 }}>{t.name}</span>
+      {t.custom && <span className="badge accent" title="Инструмент от автора курса">автор</span>}
       <button className="icon-btn" title="Положить на холст"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onAddToCanvas(t.id); }}>
@@ -152,9 +156,9 @@ export default function ToolDock({ tools, domain, courseId, nodeId, onAddToCanva
         )}
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Найти среди всех инструментов…" />
       </div>
-      {ghost && TOOL_BY_ID[ghost.toolId] && (
+      {ghost && catalog.byId[ghost.toolId] && (
         <div className="tool-ghost" style={{ left: ghost.x + 12, top: ghost.y + 10 }}>
-          <span className="ico">{TOOL_BY_ID[ghost.toolId].icon}</span> {TOOL_BY_ID[ghost.toolId].name}
+          <span className="ico">{catalog.byId[ghost.toolId].icon}</span> {catalog.byId[ghost.toolId].name}
         </div>
       )}
     </>

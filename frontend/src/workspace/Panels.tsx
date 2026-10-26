@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import Markdown from "../components/Markdown";
 import { Modal } from "../components/ui";
@@ -8,6 +8,7 @@ import { useWorkspace } from "./context";
 export type TaskT = {
   id: number; title: string; statement: string; kind: string; language: string; concept: string; bloom: string; scaffold: string;
   starter_files: string[]; status: string; score: number | null; feedback: string; hints: string[]; confidence: number | null;
+  from_author?: boolean;
 };
 
 const SCAFFOLD: Record<string, string> = {
@@ -17,6 +18,30 @@ const BLOOM: Record<string, string> = {
   remember: "вспомнить", understand: "понять", apply: "применить", analyze: "анализ", evaluate: "оценка", create: "создание",
 };
 const KIND: Record<string, string> = { code: "💻 код", text: "✍️ ответ", calc: "🧮 расчёт", canvas: "🖌 холст" };
+
+/** PRIMM-style tasks ask the learner to reason about code before running it — lock execution until they answer. */
+export function predictLock(t?: TaskT | null): string | null {
+  if (!t || t.kind !== "code" || t.status === "graded") return null;
+  if (t.scaffold !== "predict" && t.scaffold !== "worked") return null;
+  return "Сначала сам(а) предскажи, что выведет программа, и опиши это в ответе. Запуск кода (кнопка «Запустить» и инструменты Python/JS/SQL) откроется после отправки ответа на проверку.";
+}
+
+function TaskStrip({ tasks, activeId, onPick, after }: {
+  tasks: TaskT[]; activeId: number | null | undefined; onPick: (id: number) => void; after?: ReactNode;
+}) {
+  return (
+    <div className="task-strip">
+      {tasks.map((t, i) => (
+        <button key={t.id} type="button" className={`task-pill ${t.id === activeId ? "active" : ""} ${t.status === "graded" ? "done" : ""}`}
+          onClick={() => onPick(t.id)} title={`${i + 1}. ${t.title}`}>
+          {i + 1}
+          {t.score != null && <span className={`pill-score ${t.score >= 60 ? "ok" : "warn"}`}>{Math.round(t.score)}</span>}
+        </button>
+      ))}
+      {after}
+    </div>
+  );
+}
 
 function useAttachments(task: TaskT | undefined) {
   const ws = useWorkspace()!;
@@ -59,6 +84,7 @@ function useAttachments(task: TaskT | undefined) {
 function TaskMeta({ t }: { t: TaskT }) {
   return (
     <div className="row" style={{ gap: 4, marginTop: 4 }}>
+      {t.from_author && <span className="badge warning" title="Это задание выбрал преподаватель курса">🎓 от преподавателя</span>}
       <span className="badge">{KIND[t.kind] ?? t.kind}</span>
       {t.scaffold && <span className="badge accent">{SCAFFOLD[t.scaffold] ?? t.scaffold}</span>}
       {t.bloom && <span className="badge">Блум: {BLOOM[t.bloom] ?? t.bloom}</span>}
@@ -126,68 +152,70 @@ export function PracticePanel({ tasks, generating, onReload, onMore, onActive }:
 
   const shown = task ? hintsShown[task.id] ?? 0 : 0;
   const graded = tasks.filter((t) => t.status === "graded").length;
+  const idx = tasks.findIndex((t) => t.id === task?.id);
+  const lock = predictLock(task);
 
   return (
-    <div>
-      <div className="ws-section">
-        <div className="ws-section-title">📋 Задания ({graded}/{tasks.length} проверено)</div>
-        {tasks.map((t, i) => (
-          <div key={t.id} className={`task-item ${t.id === task?.id ? "active" : ""}`} onClick={() => setActiveId(t.id)}>
-            <div className="row" style={{ gap: 6 }}>
-              <span className="ttitle" style={{ flex: 1 }}>{i + 1}. {t.title}</span>
-              {t.score != null && <span className={`badge ${t.score >= 60 ? "success" : "warning"}`}>{Math.round(t.score)}</span>}
-            </div>
-            {t.id === task?.id && <TaskMeta t={t} />}
-          </div>
-        ))}
-        <button className="btn sm ghost" onClick={onMore} disabled={generating}>
-          {generating ? <><span className="spinner" /> готовлю…</> : "+ ещё задания"}
-        </button>
-      </div>
-      {task && (
-        <div className="ws-section task-detail">
-          <Markdown>{task.statement}</Markdown>
-          {task.starter_files.length > 0 && (
-            <div className="row" style={{ gap: 4 }}>
-              {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}>📄 {p.split("/").pop()}</button>)}
-            </div>
-          )}
-          {task.kind === "canvas" && <button className="btn sm mt" onClick={ws.showCanvas}>🖌 Открыть холст</button>}
-
-          {task.hints.slice(0, shown).map((h, i) => <div key={i} className="hint">💡 {h}</div>)}
-          {shown < task.hints.length && (
-            <button className="btn sm ghost mt" onClick={() => {
-              setHintsShown((s) => ({ ...s, [task.id]: shown + 1 }));
-              tracker.log("hint_open", `task:${task.id}`, { index: shown + 1 });
-            }}>💡 Подсказка {shown + 1}/{task.hints.length}</button>
-          )}
-
-          <label className="field mt">
-            Ответ / пояснение решения
-            <textarea rows={4} value={answers[task.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [task.id]: e.target.value }))}
-              placeholder={task.kind === "code" ? "Кратко: как работает твоё решение (код приложи файлом)" : "Твой ответ и ход рассуждений"} {...handlers} />
-          </label>
-          {ui}
-          <div className="small muted mt">Насколько ты уверен(а) в решении?</div>
-          <div className="confidence">
-            {[1, 2, 3, 4, 5].map((v) => (
-              <button key={v} className={confidence[task.id] === v ? "on" : ""} onClick={() => setConfidence((c) => ({ ...c, [task.id]: v }))}
-                title={["", "наугад", "сомневаюсь", "наполовину", "скорее уверен", "уверен"][v]}>{v}</button>
-            ))}
-          </div>
-          {error && <div className="alert error mt">{error}</div>}
-          <button className="btn primary mt" style={{ width: "100%" }} onClick={submit} disabled={busy || !confidence[task.id]}>
-            {busy ? <><span className="spinner" /> наставник проверяет…</> : task.status === "graded" ? "Сдать повторно" : "Сдать на проверку"}
+    <div className="task-panel">
+      <TaskStrip tasks={tasks} activeId={task?.id} onPick={setActiveId}
+        after={
+          <button className="task-pill add" onClick={onMore} disabled={generating} title="Ещё задания">
+            {generating ? <span className="spinner" /> : "+"}
           </button>
-          {task.feedback && (
-            <div className="card mt" style={{ padding: 12 }}>
-              <div className="row mb"><b>Проверка</b><span className="spacer" />
-                {task.score != null && <span className={`badge ${task.score >= 60 ? "success" : "warning"}`}>{Math.round(task.score)}/100</span>}</div>
-              <Markdown>{task.feedback}</Markdown>
+        } />
+      <div className="task-scroll">
+        <div className="small muted" style={{ padding: "10px 16px 0" }}>{graded}/{tasks.length} проверено</div>
+        {task && (
+          <div className="ws-section task-detail">
+            <div className="row" style={{ gap: 6, alignItems: "flex-start" }}>
+              <span className="ttitle" style={{ flex: 1 }}>{idx + 1}. {task.title}</span>
+              {task.score != null && <span className={`badge ${task.score >= 60 ? "success" : "warning"}`}>{Math.round(task.score)}</span>}
             </div>
-          )}
-        </div>
-      )}
+            <TaskMeta t={task} />
+            <div className="mt"><Markdown>{task.statement}</Markdown></div>
+            {task.starter_files.length > 0 && (
+              <div className="row" style={{ gap: 4 }}>
+                {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}>📄 {p.split("/").pop()}</button>)}
+              </div>
+            )}
+            {task.kind === "canvas" && <button className="btn sm mt" onClick={ws.showCanvas}>🖌 Открыть холст</button>}
+            {lock && <div className="alert warning mt lock-banner">🔒 {lock}</div>}
+
+            {task.hints.slice(0, shown).map((h, i) => <div key={i} className="hint">💡 {h}</div>)}
+            {shown < task.hints.length && (
+              <button className="btn sm ghost mt" onClick={() => {
+                setHintsShown((s) => ({ ...s, [task.id]: shown + 1 }));
+                tracker.log("hint_open", `task:${task.id}`, { index: shown + 1 });
+              }}>💡 Подсказка {shown + 1}/{task.hints.length}</button>
+            )}
+
+            <label className="field mt">
+              Ответ / пояснение решения
+              <textarea rows={4} value={answers[task.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [task.id]: e.target.value }))}
+                placeholder={task.kind === "code" ? "Кратко: как работает твоё решение (код приложи файлом)" : "Твой ответ и ход рассуждений"} {...handlers} />
+            </label>
+            {ui}
+            <div className="small muted mt">Насколько ты уверен(а) в решении?</div>
+            <div className="confidence">
+              {[1, 2, 3, 4, 5].map((v) => (
+                <button key={v} className={confidence[task.id] === v ? "on" : ""} onClick={() => setConfidence((c) => ({ ...c, [task.id]: v }))}
+                  title={["", "наугад", "сомневаюсь", "наполовину", "скорее уверен", "уверен"][v]}>{v}</button>
+              ))}
+            </div>
+            {error && <div className="alert error mt">{error}</div>}
+            <button className="btn primary mt" style={{ width: "100%" }} onClick={submit} disabled={busy || !confidence[task.id]}>
+              {busy ? <><span className="spinner" /> наставник проверяет…</> : task.status === "graded" ? "Сдать повторно" : "Сдать на проверку"}
+            </button>
+            {task.feedback && (
+              <div className="card mt" style={{ padding: 12 }}>
+                <div className="row mb"><b>Проверка</b><span className="spacer" />
+                  {task.score != null && <span className={`badge ${task.score >= 60 ? "success" : "warning"}`}>{Math.round(task.score)}/100</span>}</div>
+                <Markdown>{task.feedback}</Markdown>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -289,9 +317,12 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
   const mm = String(Math.floor(left / 60000)).padStart(2, "0");
   const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, "0");
 
+  const idx = attempt.tasks.findIndex((t) => t.id === task?.id);
+  const lock = predictLock(task);
+
   return (
-    <div>
-      <div className="ws-section">
+    <div className="task-panel">
+      <div className="ws-section" style={{ paddingBottom: 10 }}>
         <div className="row">
           <div className="ws-section-title" style={{ margin: 0 }}>🎓 Экзамен</div>
           <span className="spacer" />
@@ -301,37 +332,35 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
           Без помощника и подсказок. Вставки из буфера и необычно быстрый ввод фиксируются — по таким фрагментам после экзамена будут уточняющие вопросы.
         </div>
       </div>
-      <div className="ws-section">
-        {attempt.tasks.map((t, i) => (
-          <div key={t.id} className={`task-item ${t.id === task?.id ? "active" : ""}`}
-            onClick={async () => { await snapshot(); setActiveId(t.id); }}>
-            <div className="row" style={{ gap: 6 }}>
-              <span className="ttitle" style={{ flex: 1 }}>{i + 1}. {t.title}</span>
-              {(answers[t.id] ?? "").trim() && <span className="badge success">✓</span>}
+      <TaskStrip tasks={attempt.tasks} activeId={task?.id}
+        onPick={async (id) => { await snapshot(); setActiveId(id); }} />
+      <div className="task-scroll">
+        {task && (
+          <div className="ws-section task-detail">
+            <div className="row" style={{ gap: 6, alignItems: "flex-start" }}>
+              <span className="ttitle" style={{ flex: 1 }}>{idx + 1}. {task.title}</span>
+              {(answers[task.id] ?? "").trim() && <span className="badge success">✓</span>}
             </div>
-            {t.id === task?.id && <TaskMeta t={t} />}
+            <TaskMeta t={task} />
+            <div className="mt"><Markdown>{task.statement}</Markdown></div>
+            {task.starter_files.length > 0 && (
+              <div className="row" style={{ gap: 4 }}>
+                {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}>📄 {p.split("/").pop()}</button>)}
+              </div>
+            )}
+            {lock && <div className="alert warning mt lock-banner">🔒 {lock}</div>}
+            <label className="field mt">
+              Ответ
+              <textarea rows={5} value={answers[task.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [task.id]: e.target.value }))} {...handlers} />
+            </label>
+            {ui}
+            {error && <div className="alert error mt">{error}</div>}
+            <button className="btn success mt" style={{ width: "100%" }} onClick={() => setConfirming(true)} disabled={busy}>
+              {busy ? <><span className="spinner" /> отправляю…</> : "Сдать экзамен"}
+            </button>
           </div>
-        ))}
+        )}
       </div>
-      {task && (
-        <div className="ws-section task-detail">
-          <Markdown>{task.statement}</Markdown>
-          {task.starter_files.length > 0 && (
-            <div className="row" style={{ gap: 4 }}>
-              {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}>📄 {p.split("/").pop()}</button>)}
-            </div>
-          )}
-          <label className="field mt">
-            Ответ
-            <textarea rows={5} value={answers[task.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [task.id]: e.target.value }))} {...handlers} />
-          </label>
-          {ui}
-          {error && <div className="alert error mt">{error}</div>}
-          <button className="btn success mt" style={{ width: "100%" }} onClick={() => setConfirming(true)} disabled={busy}>
-            {busy ? <><span className="spinner" /> отправляю…</> : "Сдать экзамен"}
-          </button>
-        </div>
-      )}
       {confirming && (
         <Modal title="Сдать экзамен?" onClose={() => setConfirming(false)}
           footer={<>

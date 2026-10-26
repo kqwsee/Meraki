@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     public_url: str = "http://localhost:5173"
     fetch_contact: str = ""
 
+    # Dev tool: lets a learner roll for side quests / encounters on demand (the course page shows a dice button)
+    adventure_dev_tools: bool = False
+
     # Integrity heuristics
     paste_flag_chars: int = 40
     burst_cpm_floor: int = 650

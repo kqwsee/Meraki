@@ -58,9 +58,21 @@ async def profile(user: User = Depends(current_user), db: Session = Depends(get_
         "memory": {
             "status": memory.memory_status(),
             "entries": [{"room": m.room, "content": m.content, "created_at": m.created_at.isoformat()} for m in memories],
-            "facts": await memory.facts(user.id),
+            "facts": _facts_with_courses(await memory.facts(user.id), user.fact_clusters),
         },
     }
+
+
+def _facts_with_courses(facts: list[dict], clusters: dict[str, int]) -> list[dict]:
+    """Attach the course_id the AI last assigned each memory fact to (see services.profile.update_profile),
+    so the frontend's knowledge-map graph can cluster it under that course instead of leaving it unlinked."""
+    for f in facts:
+        predicate = str(f.get("predicate") or f.get("relation") or "")
+        obj = str(f.get("object") or f.get("target") or "")
+        course_id = clusters.get(f"{predicate}:{obj}"[:300])
+        if course_id is not None:
+            f["course_id"] = course_id
+    return facts
 
 
 def _review_stats(db: Session, user_id: int) -> dict:

@@ -21,6 +21,7 @@ from ..models import (
     Message,
     Note,
     NodeProgress,
+    PinnedExcerpt,
     Task,
     User,
     WorkspaceFile,
@@ -37,19 +38,23 @@ from ..prompts import (
     LECTURE_APPROACH_ADVANCED,
     LECTURE_APPROACH_MIDDLE,
     LECTURE_APPROACH_NOVICE,
+    LECTURE_MANDATORY,
     LECTURE_RULES,
     LECTURE_START,
     LECTURE_SUMMARY_SCHEMA,
     LECTURE_SUMMARY_SYSTEM,
+    MANDATORY_TASKS_RULES,
     NODE_MODE_HINT,
     PERSONA,
     PRACTICE_CHAT_RULES,
     PRACTICE_FOCUS,
     PRACTICE_INTERLEAVE,
     PRACTICE_TASKS_SYSTEM,
+    PROLOGUE_MANDATORY,
     PROLOGUE_RULES,
     PROLOGUE_START,
     PROLOGUE_WARMUP,
+    SIDE_CHALLENGE_RULES,
     TASKS_SCHEMA,
     TOOL_CATALOG,
     VERIFY_GRADE_SCHEMA,
@@ -57,8 +62,9 @@ from ..prompts import (
     VERIFY_QUESTIONS_SCHEMA,
     VERIFY_QUESTIONS_SYSTEM,
 )
+from . import adventures
 from . import context as ctx
-from . import integrity, reviews
+from . import custom_tools, integrity, pins, reviews
 from . import path as route
 
 log = logging.getLogger("meraki.learning")
@@ -75,7 +81,9 @@ EXAM_MINUTES_PER_TASK = 10
 def get_progress(db: Session, user_id: int, node_id: int) -> NodeProgress:
     progress = db.scalar(select(NodeProgress).where(NodeProgress.user_id == user_id, NodeProgress.node_id == node_id))
     if progress is None:
-        progress = NodeProgress(user_id=user_id, node_id=node_id, stage="prologue")
+        node = db.get(GraphNode, node_id)
+        # a side quest has no prologue: the learner chose it themself, so it opens with the lecture
+        progress = NodeProgress(user_id=user_id, node_id=node_id, stage="lecture" if node is not None and node.kind == "side" else "prologue")
         db.add(progress)
         db.flush()
     return progress
@@ -170,11 +178,19 @@ def chat_prompts(db: Session, user: User, node: GraphNode, stage: str, user_text
     if stage == "prologue":
         card = reviews.warmup_card(db, user.id, node)
         warmup = PROLOGUE_WARMUP.format(question=card.question, answer=card.answer) if card else ""
+        pinned_topics = pins.theory_outline(db, node)
+        if pinned_topics:
+            warmup += PROLOGUE_MANDATORY.format(topics=pinned_topics)
         rules = PROLOGUE_RULES.format(title=node.title, concepts=concepts, warmup=warmup)
         mats = ""
     elif stage == "lecture":
         rules = LECTURE_RULES.format(title=node.title, approach=lecture_approach(progress))
-        mats = ctx.materials_block(db, course.id, f"{node.title} {concepts} {user_text or ''}", limit=5)
+        pinned_theory = pins.theory_block(db, node)
+        if pinned_theory:
+            rules += "\n\n" + LECTURE_MANDATORY
+        mats = ctx.join_blocks(
+            pinned_theory, ctx.materials_block(db, course.id, f"{node.title} {concepts} {user_text or ''}", limit=5)
+        )
     else:
         rules = PRACTICE_CHAT_RULES.format(title=node.title)
         tasks = db.scalars(
@@ -192,7 +208,7 @@ def chat_prompts(db: Session, user: User, node: GraphNode, stage: str, user_text
         rules,
         NODE_MODE_HINT.get(mode, ""),
         ctx.learner_block(db, user),
-        ctx.course_block(course),
+        ctx.course_block(course, db),
         ctx.course_history_block(db, user.id, course.id),
         ctx.node_block(db, node),
         ctx.assessment_block(progress) if stage != "prologue" else "",
@@ -294,11 +310,13 @@ def _write_starter_files(db: Session, user_id: int, course_id: int, files: list[
 
 def _tasks_context(db: Session, user: User, node: GraphNode, course: Course) -> str:
     progress = get_progress(db, user.id, node.id)
+    pinned_topics = pins.theory_outline(db, node, with_text=True)
     return ctx.join_blocks(
-        ctx.course_block(course),
+        ctx.course_block(course, db),
         ctx.node_block(db, node),
         ctx.learner_block(db, user),
         ctx.assessment_block(progress),
+        f"## Обязательные темы преподавателя (их разбирали на лекции, задания должны это проверять)\n{pinned_topics}" if pinned_topics else "",
         f"## Конспект лекции\n{progress.lecture_summary}" if progress.lecture_summary else "",
         ctx.materials_block(db, course.id, f"задача упражнение {node.title} {' '.join(node.concepts)}", limit=4, kind="tasks"),
         ctx.materials_block(db, course.id, f"{node.title} {' '.join(node.concepts)}", limit=3),
@@ -312,22 +330,44 @@ async def generate_practice_tasks(user_id: int, node_id: int, n: int = PRACTICE_
         course = db.get(Course, node.course_id)
         assert course
         existing = db.scalars(select(Task.title).where(Task.user_id == user_id, Task.node_id == node_id, Task.stage == "practice")).all()
+        side = node.kind == "side"
+        if side:
+            n = min(n, adventures.SIDE_TASKS)  # one closing challenge instead of a full practice
         done = completed_node_ids(db, user_id, course.id) - {node_id}
         prev = db.scalars(select(GraphNode).where(GraphNode.id.in_(done))).all() if done else []
-        interleave = PRACTICE_INTERLEAVE.format(prev="; ".join(f"«{p.title}»: {', '.join(p.concepts[:3])}" for p in prev[-3:])) if prev else ""
+        interleave = PRACTICE_INTERLEAVE.format(prev="; ".join(f"«{p.title}»: {', '.join(p.concepts[:3])}" for p in prev[-3:])) if prev and not side else ""
+        mandatory = [] if side else pins.mandatory_tasks(db, user_id, node_id, "practice")
+        total = max(n, len(mandatory) + 1) if mandatory else n  # the author's tasks come on top of at least one made for this learner
         system = PRACTICE_TASKS_SYSTEM.format(
-            n=n, title=node.title, tools=", ".join(TOOL_CATALOG.get(t, t) for t in course.tools),
-            interleave=interleave, focus=PRACTICE_FOCUS.format(focus=", ".join(focus)) if focus else "",
+            n=total, title=node.title, tools=", ".join([*(TOOL_CATALOG.get(t, t) for t in course.tools), *(f"«{t.name}»" for t in custom_tools.course_tools(db, course.id, True))]),
+            interleave=interleave,
+            focus=SIDE_CHALLENGE_RULES if side else PRACTICE_FOCUS.format(focus=", ".join(focus)) if focus else "",
+            mandatory=_mandatory_rules(len(mandatory), total, hints=True),
         )  # fmt: skip
-        prompt = _tasks_context(db, user, node, course)
+        prompt = ctx.join_blocks(_tasks_context(db, user, node, course), pins.mandatory_tasks_block(mandatory))
         if existing:
             prompt += "\n\nУже выданные задания (не повторяй): " + "; ".join(existing)
     result = await get_llm().complete_json(system=system, prompt=prompt, schema=TASKS_SCHEMA, tier="smart")
     with SessionLocal() as db:
-        for t in result.get("tasks", [])[: n + 2]:
+        for t in _final_tasks(result.get("tasks", []), mandatory, total, cap=n if side else n + 2):
             t["starter_files"] = _write_starter_files(db, user_id, course.id, t.get("starter_files", []), "practice")
             db.add(_task_from_json(t, user_id, node_id, "practice"))
         db.commit()
+
+
+def _mandatory_rules(m: int, total: int, hints: bool) -> str:
+    if not m:
+        return ""
+    return MANDATORY_TASKS_RULES.format(m=m, n=total, rest=total - m, hints_part=", hints" if hints else "")
+
+
+def _final_tasks(raw: list[dict[str, Any]], mandatory: list[PinnedExcerpt], total: int, cap: int) -> list[dict[str, Any]]:
+    """The model's tasks, with the author's pinned ones guaranteed in; `excerpt_id` is trusted only for those."""
+    if mandatory:
+        return pins.merge_mandatory(raw, mandatory, total)
+    for t in raw:
+        t["excerpt_id"] = None
+    return raw[:cap]
 
 
 def _task_from_json(t: dict[str, Any], user_id: int, node_id: int, stage: str, attempt_id: int | None = None) -> Task:
@@ -336,7 +376,7 @@ def _task_from_json(t: dict[str, Any], user_id: int, node_id: int, stage: str, a
         title=str(t.get("title", "Задание"))[:200], statement=str(t.get("statement", "")),
         kind=t.get("kind") if t.get("kind") in ("code", "text", "calc", "canvas") else "text",
         language=str(t.get("language", ""))[:30], concept=str(t.get("concept", ""))[:200], bloom=str(t.get("bloom", ""))[:20], scaffold=str(t.get("scaffold", ""))[:20],
-        starter_files=t.get("starter_files", []), rubric=str(t.get("rubric", "")), solution=str(t.get("solution", "")),
+        excerpt_id=t.get("excerpt_id"), starter_files=t.get("starter_files", []), rubric=str(t.get("rubric", "")), solution=str(t.get("solution", "")),
         hints=[] if stage == "exam" else [str(h) for h in t.get("hints", [])][:3],
     )  # fmt: skip
 
@@ -379,6 +419,9 @@ async def check_practice(user_id: int, task_id: int, answer: str, files: list[di
         ).all()
         progress = get_progress(db, user_id, task.node_id)
         progress.practice_score = round(sum(s or 0 for s in graded) / max(len(graded), 1), 1)
+        node = db.get(GraphNode, task.node_id)
+        if node is not None and node.kind == "side" and task.score >= adventures.SIDE_PASS_SCORE:
+            adventures.complete_side(db, user_id, node, progress)  # no exam, no profile update, no replan: it is an extra
         db.commit()
         return task
 
@@ -402,19 +445,25 @@ async def start_exam(user_id: int, node_id: int) -> int:
         practice_text = "\n".join(
             f"- «{t.title}» (понятие: {t.concept}) — {'оценка ' + str(round(t.score)) if t.score is not None else 'не сдано'}" for t in practice
         )
-        minutes = EXAM_TASKS * EXAM_MINUTES_PER_TASK
+        mandatory = pins.mandatory_tasks(db, user_id, node_id, "exam")
+        count = max(EXAM_TASKS, len(mandatory) + 1) if mandatory else EXAM_TASKS
+        minutes = count * EXAM_MINUTES_PER_TASK
         system = EXAM_TASKS_SYSTEM.format(
-            n=EXAM_TASKS, title=node.title, minutes=minutes,
+            n=count, title=node.title, minutes=minutes,
             flagged=", ".join(f"{c} (сигналов: {n})" for c, n in flagged.items()) or "нет",
+            mandatory=_mandatory_rules(len(mandatory), count, hints=False),
         )  # fmt: skip
-        prompt = _tasks_context(db, user, node, course) + f"\n\n## Итоги практики\n{practice_text or 'практика не выполнялась'}"
+        prompt = ctx.join_blocks(
+            _tasks_context(db, user, node, course) + f"\n\n## Итоги практики\n{practice_text or 'практика не выполнялась'}",
+            pins.mandatory_tasks_block(mandatory),
+        )
     await refresh_memory(user_id, node_id)
     result = await get_llm().complete_json(system=system, prompt=prompt, schema=TASKS_SCHEMA, tier="smart")
     with SessionLocal() as db:
         attempt = ExamAttempt(user_id=user_id, node_id=node_id, time_limit_min=minutes)
         db.add(attempt)
         db.flush()
-        for t in result.get("tasks", [])[: EXAM_TASKS + 1]:
+        for t in _final_tasks(result.get("tasks", []), mandatory, count, cap=EXAM_TASKS + 1):
             t["starter_files"] = _write_starter_files(db, user_id, course.id, t.get("starter_files", []), f"exam_{attempt.id}")
             db.add(_task_from_json(t, user_id, node_id, "exam", attempt.id))
         get_progress(db, user_id, node_id).stage = "exam"
@@ -529,6 +578,7 @@ async def _finalize_exam(user_id: int, attempt_id: int) -> None:
         progress = get_progress(db, user_id, attempt.node_id)
         progress.exam_score = max(progress.exam_score or 0, attempt.score or 0)
         passed = (attempt.score or 0) >= PASS_SCORE
+        first_pass = passed and not progress.completed  # retaking a passed exam must not roll for adventures again
         if passed:
             progress.completed = True
             progress.stage = "done"
@@ -555,6 +605,8 @@ async def _finalize_exam(user_id: int, attempt_id: int) -> None:
         async def after_node() -> None:
             await update_profile(user_id)  # talents first, then the route uses them
             await route.replan(user_id, course_id)
+            if first_pass:
+                await adventures.roll_after_pass(user_id, node.id)  # last: a bridge encounter targets the replanned route
 
         spawn(after_node())
 
@@ -568,7 +620,7 @@ def tasks_json(tasks: list[Task], reveal_hints: bool = True) -> list[dict[str, A
         {
             "id": t.id, "title": t.title, "statement": t.statement, "kind": t.kind, "language": t.language,
             "concept": t.concept, "bloom": t.bloom, "scaffold": t.scaffold, "confidence": t.confidence,
-            "starter_files": [f.get("path") for f in t.starter_files], "status": t.status,
+            "starter_files": [f.get("path") for f in t.starter_files], "status": t.status, "from_author": t.excerpt_id is not None,
             "score": t.score, "feedback": t.feedback, "hints": t.hints if reveal_hints else [],
         }  # fmt: skip
         for t in tasks

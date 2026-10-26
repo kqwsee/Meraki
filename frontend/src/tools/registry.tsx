@@ -7,7 +7,10 @@ export type ToolDef = {
   icon: string;
   domains: string[];
   keywords: string;
-  component: LazyExoticComponent<ComponentType<ToolProps>>;
+  component: LazyExoticComponent<ComponentType<ToolProps>> | ComponentType<ToolProps>;
+  /** Made by the course author (not part of the built-in set). */
+  custom?: boolean;
+  description?: string;
 };
 
 const basic = () => import("./basic");

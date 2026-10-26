@@ -12,6 +12,8 @@ export type WsApi = {
   refreshFiles: () => Promise<void>;
   canvasSummary: () => string;
   showCanvas: () => void;
+  /** Set while the active task asks the learner to reason before running code — null means code may run freely. */
+  lockReason: string | null;
 };
 
 export const WsContext = createContext<WsApi | null>(null);

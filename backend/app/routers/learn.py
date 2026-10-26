@@ -15,7 +15,7 @@ from ..llm import LLMError, get_llm
 from ..models import Course, Enrollment, ExamAttempt, GraphNode, Message, ReviewCard, Task, User
 from ..security import current_user
 from ..services import context as ctx
-from ..services import integrity, learning
+from ..services import custom_tools, integrity, learning
 from ..services import path as route
 
 log = logging.getLogger("meraki.learn")
@@ -123,8 +123,9 @@ def node_state(node_id: int, user: User = Depends(current_user), db: Session = D
         _jobs.pop((user.id, node_id), None)
     return {
         "node": {"id": node.id, "title": node.title, "summary": node.summary, "objectives": node.objectives, "concepts": node.concepts,
-                 "mode": route.node_mode(db, user.id, node), "personal": node.owner_user_id is not None},
-        "course": {"id": course.id, "title": course.title, "domain": course.domain, "tools": course.tools},
+                 "mode": route.node_mode(db, user.id, node), "personal": node.owner_user_id is not None, "kind": node.kind},
+        "course": {"id": course.id, "title": course.title, "domain": course.domain, "tools": course.tools,
+                   "custom_tools": [custom_tools.tool_json(t) for t in custom_tools.course_tools(db, course.id, enabled_only=True)]},
         "progress": {
             "stage": progress.stage, "completed": progress.completed, "assessment": progress.assessment,
             "practice_score": progress.practice_score, "exam_score": progress.exam_score,
@@ -199,6 +200,8 @@ async def advance(node_id: int, body: AdvanceIn, user: User = Depends(current_us
         mode = route.node_mode(db, user.id, node)
         db.commit()
     order = ["prologue", "lecture", "practice", "exam"]
+    if node.kind == "side" and not (body.to == "practice" and current == "lecture"):
+        raise HTTPException(400, "У побочного квеста два шага: лекция и вызов")
     # "Экстерн": in fast mode the learner may go straight to the exam from any stage
     external = body.to == "exam" and mode == "fast" and current in order[:3]
     if not external and (body.to not in order[1:] or current not in order or order.index(body.to) != order.index(current) + 1):
@@ -228,7 +231,8 @@ async def more_tasks(node_id: int, body: MoreIn | None = None, user: User = Depe
 
 @router.post("/nodes/{node_id}/exam/retry")
 async def retry_exam(node_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    _node_for(db, node_id, user)
+    if _node_for(db, node_id, user).kind == "side":
+        raise HTTPException(400, "У побочного квеста нет экзамена")
     progress = learning.get_progress(db, user.id, node_id)
     if progress.stage not in ("exam", "done"):
         raise HTTPException(400, "Экзамен ещё не открыт")

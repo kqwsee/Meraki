@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Poin
 import { api } from "../api";
 import { tracker } from "../telemetry/tracker";
 import { describeInstanceState, dropBag, MAX_INSTANCES, newInstance, type ToolInstance } from "../tools/instance";
-import { TOOL_BY_ID } from "../tools/registry";
+import { ToolCatalogProvider, useToolCatalog } from "../tools/catalog";
+import type { CustomToolDto } from "../tools/custom";
 import ToolDock from "../tools/ToolDock";
 import CanvasBoard, { describeScene } from "./CanvasBoard";
 import CanvasWidgets from "./CanvasWidgets";
@@ -25,6 +26,10 @@ type Props = {
   /** Exam start and limit: the countdown lives in the task panel, so the bar repeats it when that panel is hidden. */
   deadline?: string;
   timeLimitMin?: number;
+  /** Set when the active task wants the learner to reason before running code — disables "Запустить" and the code-running tools. */
+  lockReason?: string | null;
+  /** The course author's own tools. */
+  customTools?: CustomToolDto[];
 };
 
 type Panes = { tasks: boolean; canvas: boolean; tools: boolean };
@@ -43,6 +48,7 @@ function initialPanes(): Panes {
 }
 
 const FOCUS_KEY = "meraki_ws_focus";
+const FILES_KEY = "meraki_ws_files_open";
 
 /** Full-screen workspace: hides the site header and the topic header, remembered between visits. */
 function useFocusMode() {
@@ -132,9 +138,27 @@ function mmss(ms: number) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-export default function Workspace({ courseId, nodeId, stage, tools, domain, taskPanel, helper, deadline, timeLimitMin }: Props) {
+export default function Workspace(props: Props) {
+  return (
+    <ToolCatalogProvider custom={props.customTools ?? []}>
+      <WorkspaceBody {...props} />
+    </ToolCatalogProvider>
+  );
+}
+
+function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, helper, deadline, timeLimitMin, lockReason }: Props) {
+  const catalog = useToolCatalog();
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
   const [focus, setFocus] = useFocusMode();
   const cols = useColumnWidths();
+  const [filesOpen, setFilesOpen] = useState(() => {
+    try {
+      return localStorage.getItem(FILES_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [files, setFiles] = useState<string[]>([]);
   const [tabs, setTabs] = useState<string[]>([CANVAS]);
   const [active, setActive] = useState<string>(CANVAS);
@@ -165,7 +189,7 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
   }, []);
 
   const addInstance = useCallback((toolId: string, x: number, y: number) => {
-    if (TOOL_BY_ID[toolId] === undefined) return;
+    if (catalogRef.current.byId[toolId] === undefined) return;
     if (instancesRef.current.length >= MAX_INSTANCES) {
       console.warn(`на холсте уже ${MAX_INSTANCES} инструментов — больше не помещаю`);
       return;
@@ -225,6 +249,18 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
   /** Panels are independent: hiding the canvas hands its width to the tasks, hiding everything shows the bar alone. */
   const togglePane = useCallback((key: keyof Panes) => {
     setPanes((p) => ({ ...p, [key]: !p[key] }));
+  }, []);
+
+  const toggleFiles = useCallback(() => {
+    setFilesOpen((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(FILES_KEY, next ? "1" : "0");
+      } catch {
+        /* private mode — not remembered */
+      }
+      return next;
+    });
   }, []);
 
   const showCanvasPane = useCallback(() => {
@@ -316,7 +352,7 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
   const print = (kind: OutKind, text: string) => setOutput((o) => [...o, { kind, text }]);
 
   async function runActive() {
-    if (active === CANVAS) return;
+    if (active === CANVAS || lockReason) return;
     const lang = languageOf(active);
     if (!lang) return;
     setRunning(true);
@@ -363,13 +399,14 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
         parts.push(
           "Инструменты на холсте:\n" +
             instancesRef.current
-              .map((i) => `- ${describeInstanceState(i, TOOL_BY_ID[i.toolId]?.name ?? i.toolId)}`)
+              .map((i) => `- ${describeInstanceState(i, catalogRef.current.byId[i.toolId]?.name ?? i.toolId)}`)
               .join("\n"),
         );
       }
       return parts.join("\n");
     },
     showCanvas: showCanvasPane,
+    lockReason: lockReason ?? null,
   };
 
   const lang = active !== CANVAS ? languageOf(active) : null;
@@ -416,10 +453,18 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
               <div style={{ flex: 1, minHeight: 0 }}>{helper}</div>
             ) : (
               <>
-                <div className="ws-scroll" style={{ flex: 3 }}>{taskPanel}</div>
-                <div className="ws-section" style={{ borderTop: "1px solid var(--border)", flex: 2, overflowY: "auto", minHeight: 120 }}>
-                  <div className="ws-section-title">🗂 Пространство</div>
-                  <FileTree courseId={courseId} files={files} active={active === CANVAS ? null : active} onOpen={openFile} onChanged={refreshFiles} />
+                <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{taskPanel}</div>
+                <div className="ws-filetree" style={{ borderTop: "1px solid var(--border)" }}>
+                  <button className="ws-filetree-head" onClick={toggleFiles} aria-expanded={filesOpen}>
+                    <span className={`chev ${filesOpen ? "open" : ""}`}>▸</span>
+                    <span className="ws-section-title" style={{ margin: 0 }}>🗂 Пространство</span>
+                    <span className="small muted">{files.length}</span>
+                  </button>
+                  {filesOpen && (
+                    <div className="ws-filetree-body">
+                      <FileTree courseId={courseId} files={files} active={active === CANVAS ? null : active} onOpen={openFile} onChanged={refreshFiles} />
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -448,9 +493,11 @@ export default function Workspace({ courseId, nodeId, stage, tools, domain, task
                 {lang === "python" && (
                   <input style={{ width: 180, height: 28, padding: "2px 8px", fontSize: 12 }} placeholder="stdin для input()" value={stdin} onChange={(e) => setStdin(e.target.value)} />
                 )}
+                {lockReason && <span className="lock-note" title={lockReason}>🔒 сначала ответь</span>}
                 {lang && (
-                  <button className="btn sm primary" onClick={runActive} disabled={running}>
-                    {running ? <span className="spinner" /> : "▶ Запустить"}
+                  <button className="btn sm primary" onClick={runActive} disabled={running || !!lockReason}
+                    title={lockReason ?? undefined}>
+                    {running ? <span className="spinner" /> : lockReason ? "🔒 Запустить" : "▶ Запустить"}
                   </button>
                 )}
                 <button className="btn sm ghost" onClick={() => setShowOutput((s) => !s)}>Вывод</button>

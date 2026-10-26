@@ -10,7 +10,7 @@
  * It is `pointer-events: none` so gestures pass through to the canvas; only the frames are clickable.
  */
 import { Suspense, useCallback, useEffect, useRef } from "react";
-import { TOOL_BY_ID } from "../tools/registry";
+import { useToolCatalog } from "../tools/catalog";
 import { ToolInstanceProvider, type ToolInstance } from "../tools/instance";
 import { registerViewportSync, viewport } from "./viewport";
 
@@ -27,6 +27,7 @@ const MIN_W = 220;
 const MAX_W = 720;
 
 export default function CanvasWidgets({ instances, courseId, nodeId, onUpdate, onClose, onFocus }: Props) {
+  const catalog = useToolCatalog();
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const listRef = useRef(instances);
   listRef.current = instances;
@@ -100,7 +101,7 @@ export default function CanvasWidgets({ instances, courseId, nodeId, onUpdate, o
   return (
     <div className="cw-layer">
       {instances.map((inst) => {
-        const def = TOOL_BY_ID[inst.toolId];
+        const def = catalog.byId[inst.toolId];
         const Tool = def?.component;
         return (
           <div

@@ -14,6 +14,7 @@ function Runner({ lang, sample }: { lang: "python" | "javascript" | "sql"; sampl
   const sqlRef = useRef<SqlSession | null>(null);
   const sql = () => (sqlRef.current ??= createSqlSession());
   async function run() {
+    if (ws?.lockReason) return;
     setBusy(true);
     setOut([]);
     const push = (k: OutKind, t: string) => setOut((o) => [...o, { k, t }]);
@@ -47,10 +48,13 @@ function Runner({ lang, sample }: { lang: "python" | "javascript" | "sql"; sampl
           }
         }} />
       <div className="row" style={{ gap: 4 }}>
-        <button className="btn sm primary" onClick={run} disabled={busy}>{busy ? <span className="spinner" /> : "▶ Ctrl+Enter"}</button>
+        <button className="btn sm primary" onClick={run} disabled={busy || !!ws?.lockReason} title={ws?.lockReason ?? undefined}>
+          {busy ? <span className="spinner" /> : ws?.lockReason ? "🔒" : "▶ Ctrl+Enter"}
+        </button>
         {lang === "sql" && <button className="btn sm" onClick={() => { sql().reset(); setOut([{ k: "sys", t: "База очищена\n" }]); }}>Сбросить БД</button>}
         {ws?.activePath && <span className="small muted">файл целиком — кнопкой ▶ над редактором</span>}
       </div>
+      {ws?.lockReason && <div className="small" style={{ color: "var(--warning)" }}>🔒 {ws.lockReason}</div>}
       {out.length > 0 && (
         <div className="tool-out">
           {out.map((o, i) => <span key={i} style={{ color: o.k === "err" ? "var(--danger)" : o.k === "sys" ? "var(--faint)" : undefined }}>{o.t}</span>)}

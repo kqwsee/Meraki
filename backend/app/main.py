@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from . import memory
 from .config import BASE_DIR, settings
 from .db import init_db
-from .routers import auth, courses, learn, profile, telemetry, workspace
+from .routers import adventures, auth, courses, learn, pins, profile, telemetry, tools, workspace
 from .services.sessions import idle_sweeper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -36,7 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth, courses, learn, workspace, telemetry, profile):
+for r in (auth, courses, pins, tools, learn, adventures, workspace, telemetry, profile):
     app.include_router(r.router)
 
 

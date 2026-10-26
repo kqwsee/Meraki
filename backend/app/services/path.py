@@ -23,11 +23,27 @@ log = logging.getLogger("meraki.path")
 
 
 def visible_nodes(db: Session, course_id: int, user_id: int) -> list[GraphNode]:
+    """The learner's route: the author's topics plus their personal bridges. Side quests are not part of it."""
     return list(
         db.scalars(
             select(GraphNode)
-            .where(GraphNode.course_id == course_id, or_(GraphNode.owner_user_id.is_(None), GraphNode.owner_user_id == user_id))
+            .where(
+                GraphNode.course_id == course_id,
+                or_(GraphNode.owner_user_id.is_(None), GraphNode.owner_user_id == user_id),
+                GraphNode.kind != "side",
+            )
             .order_by(GraphNode.order_index, GraphNode.id)
+        ).all()
+    )
+
+
+def side_nodes(db: Session, course_id: int, user_id: int) -> list[GraphNode]:
+    """The learner's accepted side quests: dead-end branches drawn on the map, outside the route."""
+    return list(
+        db.scalars(
+            select(GraphNode)
+            .where(GraphNode.course_id == course_id, GraphNode.owner_user_id == user_id, GraphNode.kind == "side")
+            .order_by(GraphNode.id)
         ).all()
     )
 
@@ -75,6 +91,11 @@ def route_settings(course: Course) -> dict[str, bool]:
     return {k: bool(saved.get(k, v)) for k, v in ROUTE_DEFAULTS.items()}
 
 
+def adventures_enabled(course: Course) -> bool:
+    """Whether side quests and random encounters happen in this course (the author can switch them off)."""
+    return bool((course.route_settings or {}).get("adventures", True))
+
+
 def effective_priority(course: Course, nodes: list[GraphNode], path_order: list[int]) -> list[int]:
     """Study priority honouring the author's constraints.
 
@@ -108,6 +129,8 @@ def effective_priority(course: Course, nodes: list[GraphNode], path_order: list[
 
 
 def node_mode(db: Session, user_id: int, node: GraphNode) -> str:
+    if node.kind == "side":
+        return "side"
     if node.owner_user_id is not None:
         return "bridge"
     course = db.get(Course, node.course_id)

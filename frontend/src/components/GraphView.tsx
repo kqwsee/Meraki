@@ -17,27 +17,52 @@ export type GNode = {
   rank?: number | null;
   mode?: string;
   pinned?: boolean;
+  /** topic (default) | side quest (a dead-end branch of the map) | encounter (a roaming marker: an old topic or a bridge) */
+  kind?: "topic" | "side" | "encounter";
+  parent_id?: number | null;
+  /** a marker of an adventure the learner has not taken yet (it is not a topic, so its id here is negative) */
+  adventureId?: number;
+  offered?: boolean;
+  encounter?: "recall" | "bridge";
 };
+
+/** `soft` edges are not prerequisites: they only show where a side quest or an encounter hangs on the map. */
+export type GEdge = { source: number; target: number; soft?: "side" | "event" };
 
 type Data = GNode & { isNext: boolean; showStatus: boolean; editable: boolean };
 
+const STAGE_SHORT: Record<string, string> = { lecture: "Лекция", practice: "Вызов" };
+
 function TopicNode({ data }: NodeProps) {
   const d = data as unknown as Data;
+  const side = d.kind === "side";
+  const encounter = d.kind === "encounter";
   const cls = [
     "gnode",
-    d.showStatus ? (d.completed ? "completed" : d.unlocked ? "available" : "locked") : "available",
+    encounter ? `encounter ${d.encounter}` : side ? `side ${d.completed ? "completed" : ""}` : d.showStatus ? (d.completed ? "completed" : d.unlocked ? "available" : "locked") : "available",
+    d.offered ? "offer" : "",
     d.isNext ? "next" : "",
-    d.personal ? "bridge" : "",
+    d.personal && !side && !encounter ? "bridge" : "",
     d.editable ? "editable" : "",
   ].join(" ");
-  const mode = d.mode && MODE_LABELS[d.mode];
+  const mode = d.mode && !side && MODE_LABELS[d.mode];
   return (
     <div className={cls} title={d.summary}>
       <Handle type="target" position={Position.Top} className="ghandle" isConnectable={d.editable} />
       {d.pinned && <span className="pin" title="Закреплена автором на своём месте в маршруте">📌</span>}
       {d.showStatus && d.rank != null && <span className="rank">#{d.rank + 1}</span>}
+      {(side || encounter) && (
+        <div className="gkind">{encounter ? (d.encounter === "recall" ? "🎲 Случайная встреча" : "🌉 Мостик на пути") : "✨ Побочный квест"}</div>
+      )}
       <div className="gtitle">{d.title}</div>
-      {d.showStatus && (
+      {(side || encounter) && (
+        <div className="gmeta">
+          {d.offered ? <span className="badge side">новое</span> : d.completed ? <span className="badge success">✓ пройдено</span> : (
+            <span className="badge side">{(d.stage && STAGE_SHORT[d.stage]) || "в процессе"}</span>
+          )}
+        </div>
+      )}
+      {d.showStatus && !side && !encounter && (
         <div className="gmeta">
           {d.completed ? (
             <span className="badge success">✓ пройдено</span>
@@ -71,7 +96,7 @@ export default function GraphView({
   onEdgeClick,
 }: {
   nodes: GNode[];
-  edges: { source: number; target: number }[];
+  edges: GEdge[];
   nextId?: number | null;
   showStatus?: boolean;
   onSelect?: (n: GNode) => void;
@@ -85,7 +110,8 @@ export default function GraphView({
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 64 });
     g.setDefaultEdgeLabel(() => ({}));
-    nodes.forEach((n) => g.setNode(String(n.id), { width: 214, height: showStatus ? 96 : 64 }));
+    // side quests and encounters carry an extra "what is this" line
+    nodes.forEach((n) => g.setNode(String(n.id), { width: 214, height: n.kind === "side" || n.kind === "encounter" ? 140 : showStatus ? 96 : 64 }));
     edges.forEach((e) => g.setEdge(String(e.source), String(e.target)));
     // personal bridge nodes have no hard edges: draw a dashed hint to the next topic in the route
     const hints: Edge[] = [];
@@ -110,15 +136,25 @@ export default function GraphView({
       };
     });
     const rfEdges: Edge[] = [
-      ...edges.map((e) => ({
-        id: `${e.source}-${e.target}`,
-        source: String(e.source),
-        target: String(e.target),
-        className: editable ? "gedge-editable" : undefined,
-        interactionWidth: editable ? 18 : 0,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(107, 173, 165, 0.7)", width: 16, height: 16 },
-        style: { stroke: "rgba(107, 173, 165, 0.55)", strokeWidth: 1.5 },
-      })),
+      ...edges.map((e) => {
+        if (e.soft) {
+          const color = e.soft === "side" ? "#cfb47c" : "#a79bd0";
+          return {
+            id: `s${e.source}-${e.target}`, source: String(e.source), target: String(e.target), selectable: false,
+            markerEnd: { type: MarkerType.ArrowClosed, color, width: 12, height: 12 },
+            style: { stroke: color, strokeWidth: 1.4, strokeDasharray: "5 4", opacity: 0.8 },
+          };
+        }
+        return {
+          id: `${e.source}-${e.target}`,
+          source: String(e.source),
+          target: String(e.target),
+          className: editable ? "gedge-editable" : undefined,
+          interactionWidth: editable ? 18 : 0,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(107, 173, 165, 0.7)", width: 16, height: 16 },
+          style: { stroke: "rgba(107, 173, 165, 0.55)", strokeWidth: 1.5 },
+        };
+      }),
       ...hints,
     ];
     return { rfNodes, rfEdges };
@@ -141,7 +177,7 @@ export default function GraphView({
         connectionLineStyle={{ stroke: "#5ceac9", strokeWidth: 2 }}
         connectionRadius={40}
         onConnect={(c: Connection) => c.source && c.target && onConnect?.(Number(c.source), Number(c.target))}
-        onEdgeClick={(_, e) => !e.id.startsWith("h") && onEdgeClick?.(Number(e.source), Number(e.target))}
+        onEdgeClick={(_, e) => !e.id.startsWith("h") && !e.id.startsWith("s") && onEdgeClick?.(Number(e.source), Number(e.target))}
         onNodeClick={(_, n) => onSelect?.(nodes.find((x) => String(x.id) === n.id)!)}
         proOptions={{ hideAttribution: true }}
       >

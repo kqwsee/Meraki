@@ -20,8 +20,7 @@ def extract_text(filename: str, data: bytes) -> str:
     if name.endswith(".docx"):
         import docx
 
-        document = docx.Document(io.BytesIO(data))
-        return "\n".join(p.text for p in document.paragraphs)
+        return _docx_text(docx.Document(io.BytesIO(data)))
     if any(name.endswith(ext) for ext in TEXT_EXT):
         for enc in ("utf-8", "cp1251", "latin-1"):
             try:
@@ -29,6 +28,38 @@ def extract_text(filename: str, data: bytes) -> str:
             except UnicodeDecodeError:
                 continue
     raise ValueError(f"Неподдерживаемый формат файла: {filename}. Поддерживаются PDF, DOCX, TXT, MD.")
+
+
+def _docx_text(document) -> str:
+    """Paragraphs and tables in document order, one blank line between blocks (tasks often sit in tables)."""
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    blocks: list[str] = []
+    for child in document.element.body.iterchildren():
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "p":
+            p = Paragraph(child, document)
+            text = p.text.strip()
+            if not text:
+                continue
+            style = (p.style.name if p.style is not None else "") or ""
+            level = style.rsplit(" ", 1)[-1] if style.lower().startswith(("heading", "заголовок")) else ""
+            blocks.append(f"{'#' * int(level)} {text}" if level.isdigit() and 1 <= int(level) <= 6 else text)
+        elif tag == "tbl":
+            for row in Table(child, document).rows:
+                cells = list(dict.fromkeys(c.text.strip().replace("\n", " ") for c in row.cells))  # merged cells repeat
+                if any(cells):
+                    blocks.append(" | ".join(cells))
+    return "\n\n".join(blocks)
+
+
+def normalize_text(content: str) -> str:
+    """Whitespace clean-up shared by chunking and the passage viewer, so character offsets stay valid."""
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+    content = re.sub(r"[ \t ]+", " ", content)
+    content = re.sub(r" ?\n ?", "\n", content)
+    return re.sub(r"\n{3,}", "\n\n", content).strip()
 
 
 def chunk_text(content: str) -> list[str]:
@@ -51,8 +82,26 @@ def chunk_text(content: str) -> list[str]:
     return chunks
 
 
+def material_text(db: Session, material: CourseMaterial) -> str:
+    """The text the author reads when pinning passages. Materials uploaded before the text was kept
+    are rebuilt from their chunks once and saved, so offsets into it stay stable."""
+    if not material.text:
+        chunks = db.scalars(
+            select(MaterialChunk.content).where(MaterialChunk.material_id == material.id).order_by(MaterialChunk.position)
+        ).all()
+        material.text = "\n\n".join(chunks)
+    return material.text
+
+
+def set_kind(db: Session, material: CourseMaterial, kind: str) -> None:
+    material.kind = kind
+    for chunk in db.scalars(select(MaterialChunk).where(MaterialChunk.material_id == material.id)).all():
+        chunk.kind = kind
+
+
 def add_material(db: Session, course_id: int, filename: str, kind: str, content: str) -> CourseMaterial:
-    material = CourseMaterial(course_id=course_id, filename=filename, kind=kind, chars=len(content))
+    content = normalize_text(content)
+    material = CourseMaterial(course_id=course_id, filename=filename, kind=kind, chars=len(content), text=content)
     db.add(material)
     db.flush()
     for i, chunk in enumerate(chunk_text(content)):

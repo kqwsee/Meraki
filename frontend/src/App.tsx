@@ -8,6 +8,9 @@ import Login from "./pages/Login";
 // heavy pages (canvas, editors, graph) load on demand
 const CourseEditor = lazy(() => import("./pages/CourseEditor"));
 const CoursePage = lazy(() => import("./pages/CoursePage"));
+const Encounter = lazy(() => import("./pages/Encounter"));
+const KnowledgeMap = lazy(() => import("./pages/KnowledgeMap"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const NodePage = lazy(() => import("./pages/NodePage"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Reviews = lazy(() => import("./pages/Reviews"));
@@ -70,8 +73,11 @@ export default function App() {
       <Route path="/courses/new" element={<Private><CourseEditor /></Private>} />
       <Route path="/courses/:id/edit" element={<Private><CourseEditor /></Private>} />
       <Route path="/courses/:id" element={<Private><CoursePage /></Private>} />
+      <Route path="/courses/:id/leaderboard" element={<Private><Leaderboard /></Private>} />
       <Route path="/learn/:nodeId" element={<Private wide><NodePage /></Private>} />
+      <Route path="/encounters/:id" element={<Private><Encounter /></Private>} />
       <Route path="/profile" element={<Private><Profile /></Private>} />
+      <Route path="/profile/graph" element={<Private wide><KnowledgeMap /></Private>} />
       <Route path="/reviews" element={<Private><Reviews /></Private>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

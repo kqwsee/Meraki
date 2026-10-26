@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Course, Enrollment, ExamAttempt, GraphEdge, GraphNode, Message, NodeProgress, User
 from ..prompts import DOMAINS, TOOL_CATALOG
-from . import materials
+from . import custom_tools, materials
 
 MIND_AXES = {
     "engineering": "инженерный",
@@ -56,11 +56,13 @@ def learner_block(db: Session, user: User) -> str:
     return "\n".join(lines)
 
 
-def course_block(course: Course) -> str:
+def course_block(course: Course, db: Session | None = None) -> str:
     tools = ", ".join(TOOL_CATALOG.get(t, t) for t in course.tools) or "стандартные"
+    own = custom_tools.tools_line(db, course.id) if db is not None else ""
     return (
         f"## Курс\n«{course.title}» — {DOMAINS.get(course.domain, course.domain)}\n"
         f"{course.summary or course.description}\nИнструменты практики: {tools}"
+        + (f"\nСвои инструменты автора курса (ученик может ими пользоваться, на них можно строить задания): {own}" if own else "")
     )
 
 
@@ -143,7 +145,7 @@ def course_history_block(db: Session, user_id: int, course_id: int) -> str:
     lines = ["## История ученика в этом курсе"]
     for node, p in rows:
         a = p.assessment or {}
-        parts = [f"«{node.title}»: {'пройдена' if p.completed else 'этап ' + p.stage}"]
+        parts = [f"«{node.title}»{' (побочный квест по его интересу)' if node.kind == 'side' else ''}: {'пройдена' if p.completed else 'этап ' + p.stage}"]
         if a:
             parts.append(f"стартовый уровень {a.get('overall_level')}, калибровка {a.get('calibration', '?')}")
             if a.get("misconceptions"):

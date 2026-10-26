@@ -57,4 +57,5 @@ export const MODE_LABELS: Record<string, { label: string; cls: string }> = {
   fast: { label: "⚡ ускоренно", cls: "success" },
   deep: { label: "🔍 углублённо", cls: "warning" },
   bridge: { label: "🌉 мостик", cls: "bridge" },
+  side: { label: "✨ побочный квест", cls: "side" },
 };

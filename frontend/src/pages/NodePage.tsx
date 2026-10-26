@@ -5,7 +5,8 @@ import Chat, { type Msg } from "../components/Chat";
 import Markdown from "../components/Markdown";
 import { ErrorBox, Loading, Modal, MODE_LABELS, STAGE_NAMES } from "../components/ui";
 import { tracker, TypingRecorder, textareaHandlers } from "../telemetry/tracker";
-import { ExamPanel, PracticePanel, type AttemptT, type TaskT } from "../workspace/Panels";
+import type { CustomToolDto } from "../tools/custom";
+import { ExamPanel, predictLock, PracticePanel, type AttemptT, type TaskT } from "../workspace/Panels";
 import Workspace from "../workspace/Workspace";
 
 type Verification = { flag_id: number; question: string; fragment: string; kind: string; answer: string | null; understood?: boolean | null; comment?: string };
@@ -14,8 +15,8 @@ type Attempt = AttemptT & {
   verification: Verification[];
 };
 type State = {
-  node: { id: number; title: string; summary: string; objectives: string[]; concepts: string[]; mode: string; personal: boolean };
-  course: { id: number; title: string; domain: string; tools: string[] };
+  node: { id: number; title: string; summary: string; objectives: string[]; concepts: string[]; mode: string; personal: boolean; kind?: string };
+  course: { id: number; title: string; domain: string; tools: string[]; custom_tools?: CustomToolDto[] };
   progress: {
     stage: string; completed: boolean; assessment: any; practice_score: number | null; exam_score: number | null;
     exit_ticket: string; exit_ticket_feedback: string;
@@ -29,6 +30,8 @@ type State = {
 };
 
 const ORDER = ["prologue", "lecture", "practice", "exam"];
+// a side quest is a dead-end extra: no prologue, no exam; its single practice task is the closing challenge
+const SIDE_ORDER = ["lecture", "practice"];
 const FLAG_LABELS: Record<string, string> = {
   paste: "вставка из буфера",
   burst: "необычно быстрый ввод",
@@ -64,8 +67,9 @@ export default function NodePage() {
     return () => clearInterval(t);
   }, [jobRunning, load]);
 
+  const side = st?.node.kind === "side";
   const current = st?.progress.stage ?? "prologue";
-  const viewing = view ?? (current === "done" ? "exam" : current);
+  const viewing = view ?? (current === "done" ? (side ? "practice" : "exam") : current);
 
   useEffect(() => {
     if (!st || viewing === "exam") return; // ExamStage owns the exam context (task + attempt)
@@ -103,8 +107,10 @@ export default function NodePage() {
   }
 
   if (!st) return error ? <div className="page"><ErrorBox error={error} /></div> : <Loading />;
-  const curIdx = current === "done" ? 4 : ORDER.indexOf(current);
+  const steps = side ? SIDE_ORDER : ORDER;
+  const curIdx = current === "done" ? steps.length : steps.indexOf(current);
   const mode = MODE_LABELS[st.node.mode];
+  const stepName = (s: string) => (side && s === "practice" ? "Вызов" : STAGE_NAMES[s]);
 
   return (
     <>
@@ -115,12 +121,12 @@ export default function NodePage() {
           <div className="row" style={{ gap: 8 }}>
             <span className="topic">{st.node.title}</span>
             {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}
-            {st.progress.completed && <span className="badge success">✓ тема пройдена</span>}
+            {st.progress.completed && <span className="badge success">{side ? "✓ квест пройден" : "✓ тема пройдена"}</span>}
           </div>
         </div>
         <span className="spacer" />
         <div className="stepper">
-          {ORDER.map((s, i) => (
+          {steps.map((s, i) => (
             <span key={s} style={{ display: "contents" }}>
               {i > 0 && <span className="step-arrow">›</span>}
               <span
@@ -128,7 +134,7 @@ export default function NodePage() {
                 onClick={() => i <= curIdx && setView(s)}
               >
                 <span className="num">{i < curIdx ? "✓" : i + 1}</span>
-                {STAGE_NAMES[s]}
+                {stepName(s)}
               </span>
             </span>
           ))}
@@ -163,9 +169,13 @@ export default function NodePage() {
               </>
             ) : (
               <>
-                <h3>Лекция</h3>
-                <p className="small muted">Объяснение порциями. Задавай вопросы, отвечай на проверочные — так материал запоминается лучше.</p>
-                {st.progress.assessment?.overall_level != null && (
+                <h3>{side ? "Исследование" : "Лекция"}</h3>
+                <p className="small muted">
+                  {side
+                    ? "Это побочный квест: необязательный сверхматериал по твоему интересу. Спрашивай что угодно, уходи в стороны. Дальше один вызов, экзамена нет, а в рейтинг и прогресс по курсу квест не входит."
+                    : "Объяснение порциями. Задавай вопросы, отвечай на проверочные — так материал запоминается лучше."}
+                </p>
+                {!side && st.progress.assessment?.overall_level != null && (
                   <div className="alert small mb">
                     Стартовый уровень по прологу: <b>{Math.round(st.progress.assessment.overall_level * 100)}%</b>
                     {st.progress.assessment.misconceptions?.length > 0 && <> · разберём заблуждения: {st.progress.assessment.misconceptions.join("; ")}</>}
@@ -184,7 +194,7 @@ export default function NodePage() {
               )}
               {viewing === "lecture" && current === "lecture" && (
                 <button className="btn primary" onClick={() => setExitModal(true)} disabled={!!busy}>
-                  {busy === "practice" ? <><span className="spinner" /> составляю конспект…</> : "К практике →"}
+                  {busy === "practice" ? <><span className="spinner" /> составляю конспект…</> : side ? "К вызову →" : "К практике →"}
                 </button>
               )}
               {st.node.mode === "fast" && (current === "prologue" || current === "lecture") && (
@@ -193,7 +203,7 @@ export default function NodePage() {
                 </button>
               )}
               {viewing !== current && current !== "done" && (
-                <button className="btn ghost" onClick={() => setView(null)}>Вернуться к этапу «{STAGE_NAMES[current]}»</button>
+                <button className="btn ghost" onClick={() => setView(null)}>Вернуться к этапу «{stepName(current)}»</button>
               )}
             </div>
             {viewing === "lecture" && st.progress.exit_ticket_feedback && (
@@ -208,7 +218,8 @@ export default function NodePage() {
 
       {viewing === "practice" && (
         <Workspace
-          courseId={st.course.id} nodeId={id} stage="practice" tools={st.course.tools} domain={st.course.domain}
+          courseId={st.course.id} nodeId={id} stage="practice" tools={st.course.tools} customTools={st.course.custom_tools} domain={st.course.domain}
+          lockReason={predictLock(st.practice_tasks.find((t) => t.id === activeTask))}
           taskPanel={
             <>
               <PracticePanel
@@ -218,7 +229,17 @@ export default function NodePage() {
                 onMore={() => job(`/nodes/${id}/practice/more`, {})}
                 onActive={setActiveTask}
               />
-              {current === "practice" && st.practice_tasks.length > 0 && (
+              {side && (
+                <div className="ws-section">
+                  {st.progress.completed ? (
+                    <div className="alert success small">✨ Квест пройден. Он не входит в прогресс курса и лидерборд.</div>
+                  ) : (
+                    <div className="alert small">✨ Побочный квест: реши вызов, и он засчитается. Экзамена нет.</div>
+                  )}
+                  <Link className="btn" style={{ width: "100%", marginTop: 8 }} to={`/courses/${st.course.id}`}>← К графу курса</Link>
+                </div>
+              )}
+              {!side && current === "practice" && st.practice_tasks.length > 0 && (
                 <div className="ws-section">
                   <button className="btn primary" style={{ width: "100%" }} onClick={() => setExamModal(true)} disabled={jobRunning}>
                     {st.job?.kind === "exam_start" && !st.job.error ? <><span className="spinner" /> готовлю экзамен…</> : "К экзамену →"}
@@ -236,6 +257,7 @@ export default function NodePage() {
 
       {exitModal && (
         <ExitTicket
+          next={side ? "К вызову →" : "К практике →"}
           onClose={() => setExitModal(false)}
           onSubmit={(text) => {
             setExitModal(false);
@@ -258,7 +280,7 @@ export default function NodePage() {
   );
 }
 
-function ExitTicket({ onClose, onSubmit }: { onClose: () => void; onSubmit: (text: string) => void }) {
+function ExitTicket({ onClose, onSubmit, next }: { onClose: () => void; onSubmit: (text: string) => void; next: string }) {
   const [text, setText] = useState("");
   const rec = useMemo(() => new TypingRecorder("exit_ticket", "answer"), []);
   const handlers = useMemo(() => textareaHandlers(rec, "exit_ticket", "answer"), [rec]);
@@ -266,7 +288,7 @@ function ExitTicket({ onClose, onSubmit }: { onClose: () => void; onSubmit: (tex
     <Modal title="Выходной билет" onClose={onClose}
       footer={<>
         <button className="btn ghost" onClick={() => onSubmit("")}>Пропустить</button>
-        <button className="btn primary" disabled={text.trim().length < 15} onClick={() => { rec.flush(); onSubmit(text); }}>К практике →</button>
+        <button className="btn primary" disabled={text.trim().length < 15} onClick={() => { rec.flush(); onSubmit(text); }}>{next}</button>
       </>}>
       <p>Перескажи своими словами главное из лекции — 3–5 предложений, не подглядывая.</p>
       <p className="small muted">Свободное припоминание — один из самых эффективных способов закрепить материал. Наставник прокомментирует, что упущено.</p>
@@ -296,8 +318,9 @@ function ExamStage({ st, id, onReload, onJob, onPractice }: {
   }
   if (ex.status === "in_progress") {
     return (
-      <Workspace courseId={st.course.id} nodeId={id} stage="exam" tools={st.course.tools} domain={st.course.domain}
+      <Workspace courseId={st.course.id} nodeId={id} stage="exam" tools={st.course.tools} customTools={st.course.custom_tools} domain={st.course.domain}
         deadline={ex.started_at} timeLimitMin={ex.time_limit_min}
+        lockReason={predictLock(ex.tasks.find((t) => t.id === activeTask))}
         taskPanel={<ExamPanel attempt={ex} onSubmitted={onReload} onActive={setActiveTask} />} />
     );
   }

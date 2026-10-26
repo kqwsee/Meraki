@@ -1,11 +1,11 @@
 import logging
 import re
 
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 
 from ..db import SessionLocal
 from ..llm import get_llm
-from ..models import Course, GraphEdge, GraphNode, LearnerPath, NodeProgress
+from ..models import Course, GraphEdge, GraphNode, LearnerPath, NodeProgress, PinnedExcerpt
 from ..prompts import COURSE_GRAPH_SCHEMA, COURSE_GRAPH_SYSTEM, DOMAINS, TOOL_CATALOG
 from . import materials
 
@@ -84,6 +84,8 @@ async def build_course_graph(course_id: int) -> None:
             db.execute(delete(NodeProgress).where(NodeProgress.node_id.in_(node_ids)))
         db.execute(delete(GraphEdge).where(GraphEdge.course_id == course_id))
         db.execute(delete(LearnerPath).where(LearnerPath.course_id == course_id))
+        # the author's pinned passages outlive the topics: they wait to be attached to the new ones
+        db.execute(update(PinnedExcerpt).where(PinnedExcerpt.course_id == course_id).values(node_id=None))
         db.execute(delete(GraphNode).where(GraphNode.course_id == course_id))
 
         keys: list[str] = []

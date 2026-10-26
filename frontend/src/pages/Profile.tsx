@@ -1,31 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import Markdown from "../components/Markdown";
+import MemoryGraph from "../components/MemoryGraph";
 import { ErrorBox, Loading, Modal, Progress } from "../components/ui";
-
-type ProfileT = {
-  user: { name: string; email: string; role: string };
-  courses: { id: number; title: string; domain: string; progress: number }[];
-  talents: string;
-  mind_profile: Record<string, number>;
-  mind_axes: Record<string, string>;
-  strengths: string[];
-  growth_areas: string[];
-  profile_updated_at: string | null;
-  integrity: {
-    typing_cpm: number | null; flags: Record<string, number>; pastes_30d: number; typed_segments_30d: number; total_events: number;
-    writing_profile: Record<string, number>; writing_traits: string[];
-    calibration: { samples: number; confidence: number; accuracy: number } | null;
-  };
-  reviews: { cards: number; due: number; reviews: number; retention: number | null };
-  memory: { status: { backend: string; ready: boolean; error?: string }; entries: { room: string; content: string; created_at: string }[]; facts: any[] };
-};
-type Note = { id: number; title: string; content: string; source: string; updated_at: string };
+import { useKnowledgeGraph, type Note, type ProfileT } from "../profile/knowledgeGraph";
 
 const FLAG_NAMES: Record<string, string> = { paste: "вставки", burst: "аномально быстрый ввод", bulk_insert: "крупные вставки", tab_away: "уходы со вкладки" };
 
 export default function Profile() {
+  const navigate = useNavigate();
   const [p, setP] = useState<ProfileT | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +28,8 @@ export default function Profile() {
     load();
   }, [load]);
 
+  const graph = useKnowledgeGraph(p, notes);
+
   if (!p) return error ? <ErrorBox error={error} /> : <Loading />;
   const wp = p.integrity.writing_profile ?? {};
   const cal = p.integrity.calibration;
@@ -61,6 +47,16 @@ export default function Profile() {
           await api.post("/profile/refresh");
           setTimeout(async () => { await load(); setRefreshing(false); }, 15000);
         }}>{refreshing ? <><span className="spinner" /> ИИ анализирует…</> : "↻ Обновить профиль"}</button>
+      </div>
+
+      <div className="card mt">
+        <div className="row"><h2 style={{ margin: 0 }}>Карта знаний</h2><span className="spacer" />
+          <Link className="btn sm ghost" to="/profile/graph">⤢ На весь экран</Link>
+        </div>
+        {graph.nodes.length > 0 ? (
+          <MemoryGraph nodes={graph.nodes} links={graph.links}
+            onNodeClick={(n) => { if (n.kind === "course") navigate(`/courses/${n.id.split(":")[1]}`); }} />
+        ) : <p className="muted">Появится, когда наберётся прогресс, факты памяти или заметки.</p>}
       </div>
 
       <div className="grid grid-2">
@@ -184,16 +180,6 @@ export default function Profile() {
             )}
           </div>
         )) : <p className="muted small">Пока пусто.</p>}
-        {p.memory.facts.length > 0 && (
-          <>
-            <h3>Факты</h3>
-            <div className="row" style={{ gap: 4 }}>
-              {p.memory.facts.slice(0, 30).map((f: any, i) => (
-                <span key={i} className="badge">{f.predicate ?? f.relation ?? ""}: {f.object ?? f.target ?? JSON.stringify(f)}</span>
-              ))}
-            </div>
-          </>
-        )}
       </div>
 
       {edit && (

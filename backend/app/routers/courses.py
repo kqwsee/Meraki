@@ -1,15 +1,16 @@
 import re
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..background import spawn
 from ..db import get_db
-from ..models import Course, CourseMaterial, Enrollment, GraphEdge, GraphNode, LearnerPath, NodeProgress, User
+from ..models import Course, CourseMaterial, Enrollment, GraphEdge, GraphNode, LearnerPath, NodeProgress, PinnedExcerpt, User
+from ..config import settings
 from ..prompts import DOMAINS, TOOL_CATALOG
 from ..security import current_user, require_author
-from ..services import materials
+from ..services import adventures, materials
 from ..services.context import course_progress
 from ..services.course_builder import build_course_graph
 from ..services.fetcher import fetch_material
@@ -66,7 +67,7 @@ def course_json(db: Session, c: Course, user: User) -> dict:
         "id": c.id, "title": c.title, "description": c.description, "domain": c.domain,
         "domain_name": DOMAINS.get(c.domain, c.domain), "status": c.status, "status_detail": c.status_detail,
         "summary": c.summary, "tools": c.tools, "published": c.published, "author": c.author.name,
-        "route_settings": route.route_settings(c),
+        "route_settings": {**route.route_settings(c), "adventures": route.adventures_enabled(c)},
         "is_author": c.author_id == user.id, "enrolled": enrolled,
         "nodes_count": sum(1 for n in c.nodes if n.owner_user_id is None),
         "progress": course_progress(db, user.id, c.id) if enrolled else 0,
@@ -127,6 +128,9 @@ def get_course(course_id: int, user: User = Depends(current_user), db: Session =
     nodes = route.visible_nodes(db, course_id, user.id)
     enrolled = db.scalar(select(Enrollment).where(Enrollment.user_id == user.id, Enrollment.course_id == course_id)) is not None
     view = route.route_view(db, user.id, course_id) if enrolled else {"order": [n.id for n in nodes], "modes": {}, "message": "", "replans": 0}
+    side = route.side_nodes(db, course_id, user.id) if enrolled else []
+    # the game layer: side quests and encounters hang on the map but are outside the route, progress and leaderboard
+    adventures_view = adventures.course_view(db, user.id, course) if enrolled else {"enabled": False, "items": [], "stats": {"side_done": 0, "encounters_done": 0}}
     db.commit()
     rank = {nid: i for i, nid in enumerate(view["order"])}
     next_id = next((nid for nid in view["order"] if nid not in done and prereq.get(nid, set()) <= done), None)
@@ -142,11 +146,21 @@ def get_course(course_id: int, user: User = Depends(current_user), db: Session =
                 "pinned": n.pinned, "order_index": n.order_index,
                 "mode": "bridge" if n.owner_user_id else (view["modes"].get(str(n.id)) or {}).get("mode", "standard"),
                 "mode_reason": (view["modes"].get(str(n.id)) or {}).get("reason", ""),
+                "kind": "topic",
             }  # fmt: skip
             for n in nodes
+        ] + [
+            {
+                "id": n.id, "key": n.key, "title": n.title, "summary": n.summary, "objectives": n.objectives,
+                "concepts": n.concepts, "completed": n.id in done, "stage": stages.get(n.id), "unlocked": True,
+                "personal": True, "rank": None, "pinned": False, "order_index": n.order_index, "mode": "side",
+                "mode_reason": "", "kind": "side", "parent_id": n.parent_id,
+            }  # fmt: skip
+            for n in side
         ],
         "edges": [{"source": e.src_id, "target": e.dst_id} for e in edges],
         "route": {"message": view["message"], "replans": view["replans"], "next_node_id": next_id},
+        "adventures": {**adventures_view, "dev": settings.adventure_dev_tools},
     }
 
 
@@ -162,7 +176,11 @@ def patch_course(course_id: int, body: CoursePatch, user: User = Depends(current
     if body.tools is not None:
         course.tools = [t for t in body.tools if t in TOOL_CATALOG]
     if body.route_settings is not None:
-        course.route_settings = {k: bool(body.route_settings.get(k, v)) for k, v in route.ROUTE_DEFAULTS.items()}
+        adventures_on = bool(body.route_settings.get("adventures", route.adventures_enabled(course)))
+        course.route_settings = {
+            **{k: bool(body.route_settings.get(k, v)) for k, v in route.ROUTE_DEFAULTS.items()},
+            "adventures": adventures_on,
+        }
     db.commit()
     return course_json(db, course, user)
 
@@ -288,6 +306,44 @@ def enroll(course_id: int, user: User = Depends(current_user), db: Session = Dep
     return {"ok": True}
 
 
+@router.get("/courses/{course_id}/leaderboard")
+def leaderboard(course_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    course = _visible_course(db, course_id, user)
+    total = db.scalar(
+        select(func.count()).select_from(GraphNode).where(GraphNode.course_id == course_id, GraphNode.owner_user_id.is_(None))
+    ) or 0
+    score_expr = case((NodeProgress.completed.is_(True), func.coalesce(NodeProgress.exam_score, NodeProgress.practice_score)), else_=None)
+    rows = db.execute(
+        select(
+            NodeProgress.user_id,
+            func.sum(case((NodeProgress.completed.is_(True), 1), else_=0)),
+            func.avg(score_expr),
+        )
+        .join(GraphNode, GraphNode.id == NodeProgress.node_id)
+        .where(GraphNode.course_id == course_id, GraphNode.owner_user_id.is_(None))
+        .group_by(NodeProgress.user_id)
+    ).all()
+    stats = {uid: (completed or 0, avg_score) for uid, completed, avg_score in rows}
+    enrollments = db.scalars(select(Enrollment).where(Enrollment.course_id == course_id)).all()
+    learners = {u.id: u for u in db.scalars(select(User).where(User.id.in_([e.user_id for e in enrollments]))).all()}
+    entries = []
+    for e in enrollments:
+        learner = learners.get(e.user_id)
+        if learner is None:
+            continue
+        completed, avg_score = stats.get(e.user_id, (0, None))
+        entries.append({
+            "user_id": e.user_id, "name": learner.name, "is_me": e.user_id == user.id,
+            "completed": completed, "total": total,
+            "progress": round(100.0 * completed / total, 1) if total else 0.0,
+            "avg_score": round(avg_score, 1) if avg_score is not None else None,
+        })  # fmt: skip
+    entries.sort(key=lambda e: (-e["completed"], -(e["avg_score"] if e["avg_score"] is not None else -1), e["name"]))
+    for i, e in enumerate(entries, start=1):
+        e["rank"] = i
+    return {"course_title": course.title, "total_nodes": total, "entries": entries}
+
+
 @router.patch("/nodes/{node_id}")
 def patch_node(node_id: int, body: NodePatch, user: User = Depends(current_user), db: Session = Depends(get_db)):
     node = db.get(GraphNode, node_id)
@@ -409,6 +465,7 @@ def delete_node(node_id: int, user: User = Depends(current_user), db: Session = 
                 db.add(GraphEdge(course_id=node.course_id, src_id=i.src_id, dst_id=o.dst_id))
     for e in [*ins, *outs]:
         db.delete(e)
+    db.execute(update(PinnedExcerpt).where(PinnedExcerpt.node_id == node_id).values(node_id=None))  # keep the author's passages
     db.delete(node)
     db.commit()
     return {"ok": True}
