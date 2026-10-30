@@ -1,5 +1,5 @@
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from "d3-force";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 export type GraphNodeKind = "course" | "mastered" | "fact" | "strength" | "growth" | "note";
 /** `cluster` only drives layout: nodes sharing a cluster key drift toward the same loose "cloud"
@@ -11,6 +11,7 @@ export type GraphLink = { source: string; target: string };
 
 type SimNode = GraphNode & { x?: number; y?: number; vx?: number; vy?: number; fx?: number | null; fy?: number | null };
 type SimLink = { source: SimNode; target: SimNode };
+type Pan = { x: number; y: number };
 
 const STYLE: Record<GraphNodeKind, { fill: string; r: number }> = {
   course: { fill: "var(--accent)", r: 16 },
@@ -45,6 +46,60 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
   const [, bump] = useState(0);
   const [size, setSize] = useState({ w: 640, h: 320 });
   const [dragging, setDragging] = useState<string | null>(null);
+  // view offset applied to the whole scene; kept in a ref too so pointer handlers read the latest
+  // value without being re-created on every move frame
+  const [pan, setPan] = useState<Pan>({ x: 0, y: 0 });
+  const panRef = useRef<Pan>(pan);
+  const [panning, setPanning] = useState(false);
+  // a pointerup that ends a real node drag is still followed by a click on that node; remember to
+  // swallow it so dragging a course never navigates to its page
+  const suppressClickRef = useRef(false);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  const MIN_ZOOM = 0.35;
+  const MAX_ZOOM = 3;
+
+  /** Zoom to `next` while keeping the screen point (cx, cy) — relative to the SVG box — pinned to
+   * the same spot of the map. Pan is in screen pixels, so screen = pan + zoom * graph. */
+  const applyZoom = useCallback((next: number, cx: number, cy: number) => {
+    const from = zoomRef.current;
+    const to = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+    if (to === from) return;
+    const p = panRef.current;
+    const nextPan = { x: cx - ((cx - p.x) * to) / from, y: cy - ((cy - p.y) * to) / from };
+    zoomRef.current = to;
+    panRef.current = nextPan;
+    setZoom(to);
+    setPan(nextPan);
+  }, []);
+
+  // native (non-passive) wheel listener: React's onWheel is passive, so preventDefault there
+  // wouldn't stop the page from scrolling while zooming the map
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+      applyZoom(zoomRef.current * Math.exp(-delta * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [applyZoom]);
+
+  function zoomBy(factor: number) {
+    const rect = svgRef.current?.getBoundingClientRect();
+    applyZoom(zoomRef.current * factor, (rect?.width ?? size.w) / 2, (rect?.height ?? size.h) / 2);
+  }
+
+  function resetView() {
+    zoomRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
 
   useEffect(() => {
     const el = hostRef.current;
@@ -109,16 +164,22 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     if (!svg || !sim) return;
     sim.alphaTarget(0.3).restart();
     setDragging(n.id);
+    const start = { x: e.clientX, y: e.clientY };
+    let moved = false;
     const move = (ev: PointerEvent) => {
+      // a few pixels of slack so a normal click with a shaky hand still counts as a click
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 4) moved = true;
       const rect = svg.getBoundingClientRect();
-      n.fx = ev.clientX - rect.left;
-      n.fy = ev.clientY - rect.top;
+      const z = zoomRef.current;
+      n.fx = (ev.clientX - rect.left - panRef.current.x) / z;
+      n.fy = (ev.clientY - rect.top - panRef.current.y) / z;
     };
     const up = () => {
       sim.alphaTarget(0);
       n.fx = null;
       n.fy = null;
       setDragging(null);
+      suppressClickRef.current = moved;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -126,21 +187,48 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     window.addEventListener("pointerup", up);
   }
 
+  /** Grab the empty canvas to slide the whole map around. Node drags stop propagation, so this
+   * only ever starts on background (or a link line), never while moving a node. */
+  function startPan(e: ReactPointerEvent<SVGSVGElement>) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const origin = panRef.current;
+    const start = { x: e.clientX, y: e.clientY };
+    setPanning(true);
+    const move = (ev: PointerEvent) => {
+      const next = { x: origin.x + ev.clientX - start.x, y: origin.y + ev.clientY - start.y };
+      panRef.current = next;
+      setPan(next);
+    };
+    const up = () => {
+      setPanning(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+
   return (
     <div className={`mem-graph ${fill ? "fill" : ""}`}>
-      <div className="mem-graph-canvas" ref={hostRef} style={fill ? undefined : { height: size.h }}>
-        <svg width="100%" height="100%" viewBox={`0 0 ${size.w} ${size.h}`}>
-          <g>
+      <div className={`mem-graph-canvas ${panning ? "panning" : ""}`} ref={hostRef} style={fill ? undefined : { height: size.h }}>
+        <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${size.w} ${size.h}`} onPointerDown={startPan}>
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
             {linksRef.current.map((l, i) => (
               <line key={i} className="mem-link" x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y} />
             ))}
-          </g>
-          <g>
             {nodesRef.current.map((n) => (
               <g key={n.id} transform={`translate(${n.x ?? 0}, ${n.y ?? 0})`}
                 className={`mem-node ${n.kind} ${dragging === n.id ? "dragging" : ""}`}
                 onPointerDown={(e) => startDrag(n, e)}
-                onClick={() => onNodeClick?.(n)}>
+                onClick={() => {
+                  if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                  }
+                  onNodeClick?.(n);
+                }}>
                 <title>{n.detail ?? n.label}</title>
                 <circle r={STYLE[n.kind].r} fill={STYLE[n.kind].fill} />
                 <text x={STYLE[n.kind].r + 5} y={4}>{n.label}</text>
@@ -148,6 +236,12 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
             ))}
           </g>
         </svg>
+        <div className="mem-graph-zoom">
+          <button className="btn sm ghost" title="Отдалить" aria-label="Отдалить" onClick={() => zoomBy(1 / 1.25)}>−</button>
+          <span className="small muted" title="Масштаб">{Math.round(zoom * 100)}%</span>
+          <button className="btn sm ghost" title="Приблизить" aria-label="Приблизить" onClick={() => zoomBy(1.25)}>+</button>
+          <button className="btn sm ghost" title="Сбросить вид" aria-label="Сбросить вид" onClick={resetView}>⟲</button>
+        </div>
       </div>
       <div className="mem-graph-legend">
         {LEGEND.map((l) => (
