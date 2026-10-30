@@ -53,6 +53,11 @@ export function seedBags(list: readonly ToolInstance[]) {
   for (const inst of list) bags.set(inst.id, { ...(inst.state ?? {}) });
 }
 
+/** Gives one instance its starting state (a lecture visual opens a tool with a ready example). */
+export function seedBag(id: string, state: Record<string, unknown>) {
+  bags.set(id, { ...state });
+}
+
 export function dropBag(id: string) {
   bags.delete(id);
   summaries.delete(id);

@@ -129,6 +129,54 @@ class CustomTool(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class CourseAsset(Base):
+    """A picture of the course: uploaded by the author, taken out of an uploaded PDF/DOCX, or imported from an open
+    library (a picture from a Russian or English Wikipedia article). The file lives under data/assets and is served by its unguessable key."""
+
+    __tablename__ = "course_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    mime: Mapped[str] = mapped_column(String(40), default="image/png")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), default="", index=True)
+    source: Mapped[str] = mapped_column(String(10), default="upload")  # upload | material | web
+    material_id: Mapped[int | None] = mapped_column(ForeignKey("course_materials.id", ondelete="SET NULL"), nullable=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)  # PDF page the picture was found on
+    title: Mapped[str] = mapped_column(String(300), default="")  # web: the title in the library
+    license: Mapped[str] = mapped_column(String(120), default="")  # web: e.g. "CC BY-SA 4.0"
+    author: Mapped[str] = mapped_column(String(300), default="")  # web: who to credit
+    source_url: Mapped[str] = mapped_column(String(1000), default="")  # web: the page of the picture in the library
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class TopicVisual(Base):
+    """Visual material for the lecture of one topic: a diagram, chart, scheme, interactive page or tool preset the AI
+    drafted in the course editor, or the author's own picture. Learners only ever see the approved ones."""
+
+    __tablename__ = "topic_visuals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    # NULL = not attached to a topic (the graph was rebuilt); the lecture ignores it until re-attached
+    node_id: Mapped[int | None] = mapped_column(ForeignKey("graph_nodes.id", ondelete="SET NULL"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # mermaid | svg | chart | scheme | html | tool | image
+    title: Mapped[str] = mapped_column(String(200), default="")  # caption under the visual, learners see it
+    description: Mapped[str] = mapped_column(Text, default="")  # for the tutor: what it shows and when to show it
+    code: Mapped[str] = mapped_column(Text, default="")  # mermaid / svg / html source
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # chart / scheme / tool spec; html: {"height"}
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("course_assets.id", ondelete="SET NULL"), nullable=True)  # image
+    status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | approved
+    origin: Mapped[str] = mapped_column(String(10), default="ai")  # ai | author
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class GraphNode(Base):
     __tablename__ = "graph_nodes"
 
@@ -147,6 +195,8 @@ class GraphNode(Base):
     # a dead-end branch that unlocks nothing and counts neither in progress nor in the leaderboard
     kind: Mapped[str] = mapped_column(String(10), default="topic")
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("graph_nodes.id", ondelete="SET NULL"), nullable=True)  # side quest: the topic it branches off
+    cover_asset_id: Mapped[int | None] = mapped_column(ForeignKey("course_assets.id", ondelete="SET NULL"), nullable=True)  # the topic's thumbnail
+    image_queries: Mapped[list[str]] = mapped_column(JSON, default=list)  # open-library searches the AI suggested for this topic
 
     course: Mapped[Course] = relationship(back_populates="nodes")
 

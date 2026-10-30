@@ -6,11 +6,11 @@ from sqlalchemy.orm import Session
 
 from ..background import spawn
 from ..db import get_db
-from ..models import Course, CourseMaterial, Enrollment, GraphEdge, GraphNode, LearnerPath, NodeProgress, PinnedExcerpt, User
+from ..models import Course, CourseMaterial, Enrollment, GraphEdge, GraphNode, LearnerPath, NodeProgress, PinnedExcerpt, TopicVisual, User
 from ..config import settings
 from ..prompts import DOMAINS, TOOL_CATALOG
 from ..security import current_user, require_author
-from ..services import adventures, materials
+from ..services import adventures, assets, materials
 from ..services.context import course_progress
 from ..services.course_builder import build_course_graph
 from ..services.fetcher import fetch_material
@@ -133,6 +133,7 @@ def get_course(course_id: int, user: User = Depends(current_user), db: Session =
     adventures_view = adventures.course_view(db, user.id, course) if enrolled else {"enabled": False, "items": [], "stats": {"side_done": 0, "encounters_done": 0}}
     db.commit()
     rank = {nid: i for i, nid in enumerate(view["order"])}
+    covers = assets.cover_urls(db, nodes)
     next_id = next((nid for nid in view["order"] if nid not in done and prereq.get(nid, set()) <= done), None)
     return {
         **course_json(db, course, user),
@@ -146,7 +147,7 @@ def get_course(course_id: int, user: User = Depends(current_user), db: Session =
                 "pinned": n.pinned, "order_index": n.order_index,
                 "mode": "bridge" if n.owner_user_id else (view["modes"].get(str(n.id)) or {}).get("mode", "standard"),
                 "mode_reason": (view["modes"].get(str(n.id)) or {}).get("reason", ""),
-                "kind": "topic",
+                "kind": "topic", "cover": covers.get(n.id),
             }  # fmt: skip
             for n in nodes
         ] + [
@@ -192,6 +193,7 @@ def delete_course(course_id: int, user: User = Depends(current_user), db: Sessio
         materials.delete_material(db, m)
     db.delete(course)
     db.commit()
+    assets.delete_course_files(course_id)
     return {"ok": True}
 
 
@@ -218,7 +220,8 @@ async def upload_materials(
         if not content.strip():
             raise HTTPException(400, f"Не удалось извлечь текст из {f.filename} (скан без текстового слоя?)")
         m = materials.add_material(db, course.id, f.filename or "file", kind, content)
-        added.append({"id": m.id, "filename": m.filename, "kind": m.kind, "chars": m.chars})
+        images = assets.import_from_material(db, course.id, m, f.filename or "file", data)  # figures, for the visuals step
+        added.append({"id": m.id, "filename": m.filename, "kind": m.kind, "chars": m.chars, "images": images})
     db.commit()
     return added
 
@@ -268,6 +271,7 @@ def delete_material(course_id: int, material_id: int, user: User = Depends(curre
     m = db.get(CourseMaterial, material_id)
     if m is None or m.course_id != course_id:
         raise HTTPException(404, "Материал не найден")
+    assets.drop_material_assets(db, m.id)
     materials.delete_material(db, m)
     db.commit()
     return {"ok": True}
@@ -466,6 +470,7 @@ def delete_node(node_id: int, user: User = Depends(current_user), db: Session = 
     for e in [*ins, *outs]:
         db.delete(e)
     db.execute(update(PinnedExcerpt).where(PinnedExcerpt.node_id == node_id).values(node_id=None))  # keep the author's passages
+    db.execute(update(TopicVisual).where(TopicVisual.node_id == node_id).values(node_id=None))  # and visuals
     db.delete(node)
     db.commit()
     return {"ok": True}

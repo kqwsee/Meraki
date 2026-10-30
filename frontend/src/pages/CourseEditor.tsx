@@ -7,12 +7,14 @@ import LaunchStep from "../editor/LaunchStep";
 import MaterialsStep from "../editor/MaterialsStep";
 import PinsStep from "../editor/PinsStep";
 import ToolsStep from "../editor/ToolsStep";
+import VisualsStep, { type VisualsState } from "../editor/VisualsStep";
 import TopicsStep from "../editor/TopicsStep";
 import type { CustomToolDto } from "../tools/custom";
 import { studyOrder, type CourseFull, type Excerpt, type ExcerptLimits, type Meta, type StepKey } from "../editor/types";
 
 const DEFAULT_LIMITS: ExcerptLimits = { topic_chars: 30000, task_chars: 6000, theory_budget: 20000 };
-const STEP_KEYS: StepKey[] = ["basics", "materials", "topics", "pins", "tools", "launch"];
+const STEP_KEYS: StepKey[] = ["basics", "materials", "topics", "pins", "visuals", "tools", "launch"];
+const NO_VISUALS: VisualsState = { items: [], job: null, image_queries: {}, covers: {} };
 
 export default function CourseEditor() {
   const { id } = useParams();
@@ -24,6 +26,7 @@ export default function CourseEditor() {
   const [limits, setLimits] = useState<ExcerptLimits>(DEFAULT_LIMITS);
   const [customTools, setCustomTools] = useState<CustomToolDto[]>([]);
   const [toolsMax, setToolsMax] = useState(20);
+  const [visuals, setVisuals] = useState<VisualsState>(NO_VISUALS);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -50,11 +53,17 @@ export default function CourseEditor() {
     setToolsMax(r.max);
   }, [id]);
 
+  const loadVisuals = useCallback(async () => {
+    if (!id) return;
+    setVisuals(await api.get<VisualsState>(`/courses/${id}/visuals`));
+  }, [id]);
+
   useEffect(() => {
     load().catch((e) => setError(e.message));
     loadExcerpts().catch((e) => setError(e.message));
     loadTools().catch((e) => setError(e.message));
-  }, [load, loadExcerpts, loadTools]);
+    loadVisuals().catch((e) => setError(e.message));
+  }, [load, loadExcerpts, loadTools, loadVisuals]);
 
   // poll while the AI builds the graph
   useEffect(() => {
@@ -98,11 +107,14 @@ export default function CourseEditor() {
   if (!meta || (id && !course)) return error ? <ErrorBox error={error} /> : <Loading />;
 
   const topicsCount = course ? course.nodes.filter((n) => !n.personal).length : 0;
+  const shown = visuals.items.filter((v) => v.node_id != null);
+  const visualStats = { approved: shown.filter((v) => v.status === "approved").length, drafts: shown.filter((v) => v.status !== "approved").length };
   const steps: { key: StepKey; label: string; badge?: string; done: boolean }[] = [
     { key: "basics", label: "Основа", done: !!course },
     { key: "materials", label: "Материалы", badge: course?.materials.length ? String(course.materials.length) : undefined, done: !!course?.materials.length },
     { key: "topics", label: "Темы", badge: topicsCount ? String(topicsCount) : undefined, done: topicsCount > 0 },
     { key: "pins", label: "Обязательное", badge: excerpts.length ? String(excerpts.length) : undefined, done: excerpts.some((e) => e.node_id != null) },
+    { key: "visuals", label: "Наглядность", badge: shown.length ? String(shown.length) : undefined, done: visualStats.approved > 0 },
     { key: "tools", label: "Инструменты", badge: customTools.length ? String(customTools.length) : undefined, done: customTools.length > 0 },
     { key: "launch", label: "Запуск", done: !!course?.published },
   ];
@@ -169,12 +181,16 @@ export default function CourseEditor() {
             reload={loadExcerpts} reloadCourse={load} goTo={(s) => go(s)} />
         )}
 
+        {course && step === "visuals" && (
+          <VisualsStep course={course} order={order} state={visuals} setState={setVisuals} reload={loadVisuals} focusNodeId={focus.nodeId} onError={setError} />
+        )}
+
         {course && step === "tools" && (
           <ToolsStep meta={meta} course={course} setCourse={setCourse} tools={customTools} max={toolsMax} reload={loadTools} onError={setError} />
         )}
 
         {course && step === "launch" && (
-          <LaunchStep course={course} excerpts={excerpts} customTools={customTools.length} busy={busy} run={run} load={load} goTo={(s) => go(s)} />
+          <LaunchStep course={course} excerpts={excerpts} customTools={customTools.length} visuals={visualStats} busy={busy} run={run} load={load} goTo={(s) => go(s)} />
         )}
       </div>
 

@@ -6,6 +6,8 @@ import Markdown from "../components/Markdown";
 import { ErrorBox, Loading, Modal, MODE_LABELS, STAGE_NAMES } from "../components/ui";
 import { tracker, TypingRecorder, textareaHandlers } from "../telemetry/tracker";
 import type { CustomToolDto } from "../tools/custom";
+import { VisualsProvider } from "../visuals/context";
+import type { VisualDto } from "../visuals/types";
 import { ExamPanel, predictLock, PracticePanel, type AttemptT, type TaskT } from "../workspace/Panels";
 import Workspace from "../workspace/Workspace";
 
@@ -15,7 +17,8 @@ type Attempt = AttemptT & {
   verification: Verification[];
 };
 type State = {
-  node: { id: number; title: string; summary: string; objectives: string[]; concepts: string[]; mode: string; personal: boolean; kind?: string };
+  node: { id: number; title: string; summary: string; objectives: string[]; concepts: string[]; mode: string; personal: boolean; kind?: string; cover?: string | null };
+  visuals: VisualDto[];
   course: { id: number; title: string; domain: string; tools: string[]; custom_tools?: CustomToolDto[] };
   progress: {
     stage: string; completed: boolean; assessment: any; practice_score: number | null; exam_score: number | null;
@@ -149,16 +152,19 @@ export default function NodePage() {
 
       {(viewing === "prologue" || viewing === "lecture") && (
         <div className="chat-page">
-          <Chat
-            key={viewing}
-            nodeId={id}
-            courseId={st.course.id}
-            stage={viewing as "prologue" | "lecture"}
-            initial={st.messages[viewing as "prologue" | "lecture"]}
-            autoStart={viewing === current}
-            placeholder={viewing === "prologue" ? "Отвечай как думаешь — это не экзамен…" : undefined}
-          />
+          <VisualsProvider items={st.visuals ?? []} courseId={st.course.id} nodeId={id}>
+            <Chat
+              key={viewing}
+              nodeId={id}
+              courseId={st.course.id}
+              stage={viewing as "prologue" | "lecture"}
+              initial={st.messages[viewing as "prologue" | "lecture"]}
+              autoStart={viewing === current}
+              placeholder={viewing === "prologue" ? "Отвечай как думаешь — это не экзамен…" : undefined}
+            />
+          </VisualsProvider>
           <aside className="chat-side">
+            {st.node.cover && <img className="topic-cover" src={st.node.cover} alt="" />}
             {viewing === "prologue" ? (
               <>
                 <h3>Пролог</h3>

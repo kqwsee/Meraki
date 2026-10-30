@@ -2,10 +2,11 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { plural, type CourseFull, type Excerpt, type StepKey } from "./types";
 
-export default function LaunchStep({ course, excerpts, customTools, busy, run, load, goTo }: {
+export default function LaunchStep({ course, excerpts, customTools, visuals, busy, run, load, goTo }: {
   course: CourseFull;
   excerpts: Excerpt[];
   customTools: number;
+  visuals: { approved: number; drafts: number };
   busy: string | null;
   run: (label: string, fn: () => Promise<unknown>) => Promise<void>;
   load: () => Promise<void>;
@@ -24,6 +25,11 @@ export default function LaunchStep({ course, excerpts, customTools, busy, run, l
     { ok: excerpts.some((e) => e.node_id != null), required: false, step: "pins",
       text: excerpts.length ? `Обязательных фрагментов: ${excerpts.length}` : "Обязательного содержания нет",
       note: unattached ? `${unattached} без темы: ИИ их не использует` : excerpts.length ? undefined : "По желанию: ИИ сам подберёт материал" },
+    { ok: visuals.approved > 0 && visuals.drafts === 0, required: false, step: "visuals",
+      text: visuals.approved || visuals.drafts
+        ? `Наглядность: одобрено ${visuals.approved}` + (visuals.drafts ? `, ждут проверки ${visuals.drafts}` : "")
+        : "Наглядности к лекциям нет",
+      note: visuals.drafts ? "Непроверенные материалы ученики не увидят, пока вы их не одобрите" : visuals.approved ? undefined : "По желанию: ИИ подготовит схемы и диаграммы, вы проверите" },
     { ok: customTools > 0, required: false, step: "tools",
       text: customTools ? `Своих инструментов: ${customTools}` : "Своих инструментов нет", note: customTools ? undefined : "По желанию: встроенные инструменты уже подключены" },
   ];
@@ -60,7 +66,7 @@ export default function LaunchStep({ course, excerpts, customTools, busy, run, l
       <div className="card row">
         <div>
           <h3 style={{ margin: 0 }}>Удалить курс</h3>
-          <span className="small muted">Вместе с материалами, обязательными фрагментами, своими инструментами и прогрессом учеников. Это нельзя отменить.</span>
+          <span className="small muted">Вместе с материалами, обязательными фрагментами, наглядностью, своими инструментами и прогрессом учеников. Это нельзя отменить.</span>
         </div>
         <span className="spacer" />
         <button className="btn danger" onClick={() => {

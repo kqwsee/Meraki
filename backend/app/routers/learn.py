@@ -15,7 +15,7 @@ from ..llm import LLMError, get_llm
 from ..models import Course, Enrollment, ExamAttempt, GraphNode, Message, ReviewCard, Task, User
 from ..security import current_user
 from ..services import context as ctx
-from ..services import custom_tools, integrity, learning
+from ..services import assets, custom_tools, integrity, learning, visuals
 from ..services import path as route
 
 log = logging.getLogger("meraki.learn")
@@ -123,7 +123,9 @@ def node_state(node_id: int, user: User = Depends(current_user), db: Session = D
         _jobs.pop((user.id, node_id), None)
     return {
         "node": {"id": node.id, "title": node.title, "summary": node.summary, "objectives": node.objectives, "concepts": node.concepts,
-                 "mode": route.node_mode(db, user.id, node), "personal": node.owner_user_id is not None, "kind": node.kind},
+                 "mode": route.node_mode(db, user.id, node), "personal": node.owner_user_id is not None, "kind": node.kind,
+                 "cover": assets.cover_urls(db, [node]).get(node.id)},
+        "visuals": visuals.with_assets(db, visuals.node_visuals(db, node.id, approved_only=True)),
         "course": {"id": course.id, "title": course.title, "domain": course.domain, "tools": course.tools,
                    "custom_tools": [custom_tools.tool_json(t) for t in custom_tools.course_tools(db, course.id, enabled_only=True)]},
         "progress": {

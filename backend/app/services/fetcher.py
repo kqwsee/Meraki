@@ -68,12 +68,35 @@ def _check_public(url: str) -> None:
             raise ValueError("Ссылки на внутренние адреса запрещены")
 
 
+def user_agent() -> str:
+    contact = f"; {settings.fetch_contact}" if settings.fetch_contact else ""
+    return f"MerakiCourseImporter/0.1 (+{settings.public_url}{contact}) httpx/{httpx.__version__}"
+
+
+async def download_public(url: str, max_bytes: int) -> tuple[bytes, str]:
+    """(body, content type) of a public URL; every redirect hop is re-checked, a body over `max_bytes` is refused."""
+    _check_public(url)
+    async with httpx.AsyncClient(follow_redirects=False, timeout=60, headers={"User-Agent": user_agent()}) as client:
+        for _ in range(5):
+            async with client.stream("GET", url) as resp:
+                if resp.is_redirect:
+                    url = str(resp.next_request.url) if resp.next_request else ""
+                    _check_public(url)
+                    continue
+                resp.raise_for_status()
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body += chunk
+                    if len(body) > max_bytes:
+                        raise ValueError(f"Файл больше {max_bytes // (1024 * 1024)} МБ")
+                return bytes(body), resp.headers.get("content-type", "").lower()
+    raise ValueError("Слишком много перенаправлений")
+
+
 async def fetch_material(url: str) -> tuple[str, str]:
     """Returns (filename/title, text)."""
     _check_public(url)
-    contact = f"; {settings.fetch_contact}" if settings.fetch_contact else ""
-    user_agent = f"MerakiCourseImporter/0.1 (+{settings.public_url}{contact}) httpx/{httpx.__version__}"
-    async with httpx.AsyncClient(follow_redirects=False, timeout=60, headers={"User-Agent": user_agent}) as client:
+    async with httpx.AsyncClient(follow_redirects=False, timeout=60, headers={"User-Agent": user_agent()}) as client:
         for _ in range(5):  # follow redirects manually, re-checking each hop
             resp = await client.get(url)
             if resp.is_redirect:

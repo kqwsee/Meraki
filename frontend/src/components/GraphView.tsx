@@ -24,6 +24,8 @@ export type GNode = {
   adventureId?: number;
   offered?: boolean;
   encounter?: "recall" | "bridge";
+  /** the topic's thumbnail, set by the author */
+  cover?: string | null;
 };
 
 /** `soft` edges are not prerequisites: they only show where a side quest or an encounter hangs on the map. */
@@ -54,7 +56,9 @@ function TopicNode({ data }: NodeProps) {
       {(side || encounter) && (
         <div className="gkind">{encounter ? (d.encounter === "recall" ? "🎲 Случайная встреча" : "🌉 Мостик на пути") : "✨ Побочный квест"}</div>
       )}
-      <div className="gtitle">{d.title}</div>
+      {d.cover ? (
+        <div className="gtitle-row"><img className="gcover" src={d.cover} alt="" /><div className="gtitle">{d.title}</div></div>
+      ) : <div className="gtitle">{d.title}</div>}
       {(side || encounter) && (
         <div className="gmeta">
           {d.offered ? <span className="badge side">новое</span> : d.completed ? <span className="badge success">✓ пройдено</span> : (

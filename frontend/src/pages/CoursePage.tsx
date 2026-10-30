@@ -242,6 +242,7 @@ export default function CoursePage() {
                   className={`route-step ${n.completed ? "done" : ""} ${isNext ? "next" : ""} ${c.enrolled && !clickable ? "locked" : ""}`}
                   onClick={() => clickable && select(n)} title={n.mode_reason || n.summary}>
                   <span className="route-num">{n.completed ? "✓" : i + 1}</span>
+                  {n.cover && <img className="route-cover" src={n.cover} alt="" />}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="route-title">
                       {n.title}

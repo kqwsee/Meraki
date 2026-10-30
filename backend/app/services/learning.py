@@ -39,10 +39,12 @@ from ..prompts import (
     LECTURE_APPROACH_MIDDLE,
     LECTURE_APPROACH_NOVICE,
     LECTURE_MANDATORY,
+    LECTURE_NO_VISUALS,
     LECTURE_RULES,
     LECTURE_START,
     LECTURE_SUMMARY_SCHEMA,
     LECTURE_SUMMARY_SYSTEM,
+    LECTURE_VISUALS,
     MANDATORY_TASKS_RULES,
     NODE_MODE_HINT,
     PERSONA,
@@ -64,7 +66,7 @@ from ..prompts import (
 )
 from . import adventures
 from . import context as ctx
-from . import custom_tools, integrity, pins, reviews
+from . import custom_tools, integrity, pins, reviews, visuals
 from . import path as route
 
 log = logging.getLogger("meraki.learning")
@@ -188,8 +190,10 @@ def chat_prompts(db: Session, user: User, node: GraphNode, stage: str, user_text
         pinned_theory = pins.theory_block(db, node)
         if pinned_theory:
             rules += "\n\n" + LECTURE_MANDATORY
+        shown = visuals.lecture_block(db, node)  # only what the author approved
+        rules += "\n\n" + (LECTURE_VISUALS if shown else LECTURE_NO_VISUALS)
         mats = ctx.join_blocks(
-            pinned_theory, ctx.materials_block(db, course.id, f"{node.title} {concepts} {user_text or ''}", limit=5)
+            pinned_theory, shown, ctx.materials_block(db, course.id, f"{node.title} {concepts} {user_text or ''}", limit=5)
         )
     else:
         rules = PRACTICE_CHAT_RULES.format(title=node.title)

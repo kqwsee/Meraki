@@ -25,7 +25,7 @@ export type ExcerptLimits = { topic_chars: number; task_chars: number; theory_bu
 
 export const KIND_NAMES: Record<string, string> = { textbook: "учебник / теория", tasks: "задания", other: "другое" };
 
-export type StepKey = "basics" | "materials" | "topics" | "pins" | "tools" | "launch";
+export type StepKey = "basics" | "materials" | "topics" | "pins" | "visuals" | "tools" | "launch";
 
 /** Author topics in study order: the author's order wherever the prerequisite arrows allow it. */
 export function studyOrder(nodes: TopicNode[], edges: Edge[]): TopicNode[] {
