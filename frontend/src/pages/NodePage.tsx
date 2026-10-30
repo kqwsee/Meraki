@@ -32,6 +32,22 @@ type State = {
   pass_score: number;
 };
 
+/** Folder of one task: course/topic/stage/task. */
+function taskFolder(t?: TaskT): string {
+  if (!t) return "";
+  if (t.folder) return t.folder;
+  const first = t.starter_files[0];
+  return first ? first.split("/").slice(0, -1).join("/") : "";
+}
+
+/** Folder of the whole stage (practice or exam): every task of this stage is visible. */
+function stageFolder(t?: TaskT): string {
+  const folder = taskFolder(t);
+  if (!folder) return "";
+  const parts = folder.split("/");
+  return parts.length > 1 ? parts.slice(0, -1).join("/") : folder;
+}
+
 const ORDER = ["prologue", "lecture", "practice", "exam"];
 // a side quest is a dead-end extra: no prologue, no exam; its single practice task is the closing challenge
 const SIDE_ORDER = ["lecture", "practice"];
@@ -110,6 +126,7 @@ export default function NodePage() {
   }
 
   if (!st) return error ? <div className="page"><ErrorBox error={error} /></div> : <Loading />;
+  const practiceTask = st.practice_tasks.find((t) => t.id === activeTask) ?? st.practice_tasks[0];
   const steps = side ? SIDE_ORDER : ORDER;
   const curIdx = current === "done" ? steps.length : steps.indexOf(current);
   const mode = MODE_LABELS[st.node.mode];
@@ -225,6 +242,7 @@ export default function NodePage() {
       {viewing === "practice" && (
         <Workspace
           courseId={st.course.id} nodeId={id} stage="practice" tools={st.course.tools} customTools={st.course.custom_tools} domain={st.course.domain}
+          fileScope={stageFolder(practiceTask)} fileTaskFolder={taskFolder(practiceTask)}
           lockReason={predictLock(st.practice_tasks.find((t) => t.id === activeTask))}
           taskPanel={
             <>
@@ -308,6 +326,8 @@ function ExamStage({ st, id, onReload, onJob, onPractice }: {
 }) {
   const [activeTask, setActiveTask] = useState<number | null>(null);
   const ex = st.exam;
+  const examTask = ex?.tasks.find((t) => t.id === activeTask) ?? ex?.tasks[0];
+  const examFolder = stageFolder(examTask);
   const runningJob = st.job && !st.job.error ? st.job.kind : null;
 
   useEffect(() => {
@@ -325,7 +345,7 @@ function ExamStage({ st, id, onReload, onJob, onPractice }: {
   if (ex.status === "in_progress") {
     return (
       <Workspace courseId={st.course.id} nodeId={id} stage="exam" tools={st.course.tools} customTools={st.course.custom_tools} domain={st.course.domain}
-        deadline={ex.started_at} timeLimitMin={ex.time_limit_min}
+        fileScope={examFolder} fileTaskFolder={taskFolder(examTask)} deadline={ex.started_at} timeLimitMin={ex.time_limit_min}
         lockReason={predictLock(ex.tasks.find((t) => t.id === activeTask))}
         taskPanel={<ExamPanel attempt={ex} onSubmitted={onReload} onActive={setActiveTask} />} />
     );

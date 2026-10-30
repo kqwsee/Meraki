@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 from typing import Any
 
 from sqlalchemy import select
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import memory
 from ..db import SessionLocal
-from ..llm import get_llm
+from ..llm import LLMProvider, get_llm
 from ..models import (
     STAGES,
     Course,
@@ -32,6 +33,7 @@ from ..prompts import (
     ASSESS_SYSTEM,
     CHECK_SCHEMA,
     CHECK_SYSTEM,
+    EXAM_GRADE_REPAIR_SYSTEM,
     EXAM_GRADE_SCHEMA,
     EXAM_GRADE_SYSTEM,
     EXAM_TASKS_SYSTEM,
@@ -66,7 +68,7 @@ from ..prompts import (
 )
 from . import adventures
 from . import context as ctx
-from . import custom_tools, integrity, pins, reviews, visuals
+from . import custom_tools, integrity, pins, reviews, visuals, workspace_layout
 from . import path as route
 
 log = logging.getLogger("meraki.learning")
@@ -309,6 +311,11 @@ def _write_starter_files(db: Session, user_id: int, course_id: int, files: list[
         content = str(f.get("content", ""))
         db.add(WorkspaceFile(user_id=user_id, course_id=course_id, path=path, content=content))
         written.append({"path": path, "content": content})
+    if not written:
+        # keep an empty task folder visible in the workspace tree
+        keep = f"{folder}/.keep"
+        if keep not in taken:
+            db.add(WorkspaceFile(user_id=user_id, course_id=course_id, path=keep, content=""))
     return written
 
 
@@ -353,9 +360,24 @@ async def generate_practice_tasks(user_id: int, node_id: int, n: int = PRACTICE_
             prompt += "\n\nУже выданные задания (не повторяй): " + "; ".join(existing)
     result = await get_llm().complete_json(system=system, prompt=prompt, schema=TASKS_SCHEMA, tier="smart")
     with SessionLocal() as db:
-        for t in _final_tasks(result.get("tasks", []), mandatory, total, cap=n if side else n + 2):
-            t["starter_files"] = _write_starter_files(db, user_id, course.id, t.get("starter_files", []), "practice")
-            db.add(_task_from_json(t, user_id, node_id, "practice"))
+        node = db.get(GraphNode, node_id)
+        assert node
+        course = db.get(Course, node.course_id)
+        assert course
+        topic = workspace_layout.topic_number(node)
+        existing = len(
+            db.scalars(
+                select(Task.id).where(Task.user_id == user_id, Task.node_id == node_id, Task.stage == "practice")
+            ).all()
+        )
+        for index, t in enumerate(_final_tasks(result.get("tasks", []), mandatory, total, cap=n if side else n + 2), start=1):
+            task = _task_from_json(t, user_id, node_id, "practice")
+            db.add(task)
+            db.flush()  # the folder name includes the task number
+            number = f"{topic}.{existing + index}"
+            folder = workspace_layout.task_folder(course, node, "practice", number, task.title)
+            task.workspace_folder = folder
+            task.starter_files = _write_starter_files(db, user_id, course.id, t.get("starter_files", []), folder)
         db.commit()
 
 
@@ -464,17 +486,112 @@ async def start_exam(user_id: int, node_id: int) -> int:
     await refresh_memory(user_id, node_id)
     result = await get_llm().complete_json(system=system, prompt=prompt, schema=TASKS_SCHEMA, tier="smart")
     with SessionLocal() as db:
+        node = db.get(GraphNode, node_id)
+        assert node
+        course = db.get(Course, node.course_id)
+        assert course
         attempt = ExamAttempt(user_id=user_id, node_id=node_id, time_limit_min=minutes)
         db.add(attempt)
         db.flush()
-        for t in _final_tasks(result.get("tasks", []), mandatory, count, cap=EXAM_TASKS + 1):
-            t["starter_files"] = _write_starter_files(db, user_id, course.id, t.get("starter_files", []), f"exam_{attempt.id}")
-            db.add(_task_from_json(t, user_id, node_id, "exam", attempt.id))
+        topic = workspace_layout.topic_number(node)
+        existing = len(
+            db.scalars(
+                select(Task.id).where(Task.user_id == user_id, Task.node_id == node_id, Task.stage == "exam")
+            ).all()
+        )
+        for index, t in enumerate(_final_tasks(result.get("tasks", []), mandatory, count, cap=EXAM_TASKS + 1), start=1):
+            task = _task_from_json(t, user_id, node_id, "exam", attempt.id)
+            db.add(task)
+            db.flush()  # the folder name includes the task number
+            number = f"{topic}.{existing + index}"
+            folder = workspace_layout.task_folder(course, node, "exam", number, task.title)
+            task.workspace_folder = folder
+            task.starter_files = _write_starter_files(db, user_id, course.id, t.get("starter_files", []), folder)
         get_progress(db, user_id, node_id).stage = "exam"
         db.commit()
         attempt_id = attempt.id
     await file_dialogues(user_id, node_id, ("practice",))  # the practice helper chat ends here
     return attempt_id
+
+
+# ---------- exam grading: points -> percentage ----------
+
+
+class GradingContractError(ValueError):
+    """The grader broke the points/max_points contract, so its score cannot be trusted."""
+
+
+def _finite_number(value: Any, field: str) -> float:
+    if isinstance(value, bool):
+        raise GradingContractError(f"{field}: ожидалось число, получено {value!r}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as e:
+        raise GradingContractError(f"{field}: ожидалось число, получено {value!r}") from e
+    if not math.isfinite(number):
+        raise GradingContractError(f"{field}: ожидалось конечное число, получено {value!r}")
+    return number
+
+
+def normalize_exam_score(result: dict[str, Any]) -> float:
+    """Convert raw rubric points to a 0..100 percentage.
+
+    Rubrics may use arbitrary maxima (7, 10, 27, ...). Asking the model to normalize them to
+    percentages proved unreliable, so the model returns points/max_points and we do the arithmetic.
+    """
+    points = _finite_number(result.get("points"), "points")
+    max_points = _finite_number(result.get("max_points"), "max_points")
+    if max_points <= 0:
+        raise GradingContractError("max_points должен быть больше нуля")
+    if points < 0 or points > max_points:
+        raise GradingContractError(f"points={points} вне диапазона 0..{max_points}")
+    return round(max(0.0, min(100.0, 100.0 * points / max_points)), 1)
+
+
+def validate_exam_grade(grade: dict[str, Any], task_ids: set[int]) -> dict[int, float]:
+    """Check every task got exactly one valid points/max_points result."""
+    results = grade.get("results")
+    if not isinstance(results, list):
+        raise GradingContractError("в ответе нет списка results")
+    scores: dict[int, float] = {}
+    for item in results:
+        if not isinstance(item, dict):
+            raise GradingContractError("элемент results — не объект")
+        if isinstance(item.get("task_id"), bool):
+            raise GradingContractError(f"некорректный task_id: {item.get('task_id')!r}")
+        try:
+            task_id = int(item.get("task_id"))
+        except (TypeError, ValueError) as e:
+            raise GradingContractError(f"некорректный task_id: {item.get('task_id')!r}") from e
+        if task_id not in task_ids:
+            continue  # a hallucinated id must not affect real tasks
+        if task_id in scores:
+            raise GradingContractError(f"task_id={task_id} встречается несколько раз")
+        scores[task_id] = normalize_exam_score(item)
+    missing = sorted(task_ids - scores.keys())
+    if missing:
+        raise GradingContractError(f"нет оценки для task_id={missing}")
+    return scores
+
+
+async def _grade_exam(llm: LLMProvider, prompt: str, task_ids: set[int]) -> tuple[dict[int, float], dict[str, Any]]:
+    """Grade an exam, retrying once if the model breaks the points/max_points contract."""
+    grade = await llm.complete_json(system=EXAM_GRADE_SYSTEM, prompt=prompt, schema=EXAM_GRADE_SCHEMA, tier="smart")
+    try:
+        return validate_exam_grade(grade, task_ids), grade
+    except GradingContractError as first_error:
+        log.warning("exam grading contract violation (%s); asking the model to repair it", first_error)
+        repair_prompt = (
+            f"{prompt}\n\n## Предыдущий ответ экзаменатора (нарушает контракт)\n"
+            f"{json.dumps(grade, ensure_ascii=False)[:8000]}\n\n"
+            f"## Нарушение\n{first_error}\n\n"
+            "Верни исправленный JSON: для каждого задания обязательны points и max_points; "
+            "points — набранные сырые баллы, max_points — максимум баллов по rubric; 0 <= points <= max_points."
+        )
+        repaired = await llm.complete_json(
+            system=EXAM_GRADE_REPAIR_SYSTEM, prompt=repair_prompt, schema=EXAM_GRADE_SCHEMA, tier="smart"
+        )
+        return validate_exam_grade(repaired, task_ids), repaired
 
 
 async def submit_exam(user_id: int, attempt_id: int, answers: dict[str, dict[str, Any]]) -> None:
@@ -492,34 +609,40 @@ async def submit_exam(user_id: int, attempt_id: int, answers: dict[str, dict[str
                 f"### task_id={t.id}: «{t.title}» ({t.kind} {t.language})\n{t.statement}\nКритерии: {t.rubric}\n"
                 f"Эталон: {t.solution or '—'}\n\n{t.answer}"
             )
-        attempt.finished_at = utcnow()
-        db.commit()
+        db.commit()  # answers are saved even if grading fails, so a retry can resubmit them
         prompt = ctx.join_blocks(ctx.node_block(db, node), "## Экзаменационные задания и ответы\n\n" + "\n\n".join(blocks))
         fragments = [f for f in integrity.flags_for_attempt(db, attempt_id) if f.fragment.strip()]
         fragments_text = "\n\n".join(f"flag_id={f.id} ({f.kind}, {f.target}):\n```\n{f.fragment[:1500]}\n```" for f in fragments[:6])
         node_block = ctx.node_block(db, node)
+        task_ids = {t.id for t in tasks}
 
     llm = get_llm()
-    grade_task = llm.complete_json(system=EXAM_GRADE_SYSTEM, prompt=prompt, schema=EXAM_GRADE_SCHEMA, tier="smart")
+    grade_task = _grade_exam(llm, prompt, task_ids)
     if fragments:
         q_prompt = ctx.join_blocks(node_block, "## Помеченные фрагменты\n" + fragments_text, "## Контекст решений\n" + prompt[-12000:])
-        grade, questions = await asyncio.gather(
+        (scores_by_task, grade), questions = await asyncio.gather(
             grade_task, llm.complete_json(system=VERIFY_QUESTIONS_SYSTEM, prompt=q_prompt, schema=VERIFY_QUESTIONS_SCHEMA, tier="fast")
         )
     else:
-        grade, questions = await grade_task, {"questions": []}
+        (scores_by_task, grade), questions = await grade_task, {"questions": []}
 
+    feedback_by_task = {
+        int(r.get("task_id", 0)): str(r.get("feedback", ""))
+        for r in grade.get("results", [])
+        if isinstance(r, dict) and r.get("task_id") is not None
+    }
     with SessionLocal() as db:
         attempt = db.get(ExamAttempt, attempt_id)
         assert attempt
         tasks = {t.id: t for t in db.scalars(select(Task).where(Task.attempt_id == attempt_id)).all()}
-        for r in grade.get("results", []):
-            t = tasks.get(int(r.get("task_id", 0)))
+        for task_id, score in scores_by_task.items():
+            t = tasks.get(task_id)
             if t:
-                t.score = max(0.0, min(100.0, float(r.get("score", 0))))
-                t.feedback = str(r.get("feedback", ""))
+                t.score = score
+                t.feedback = feedback_by_task.get(task_id, "")
                 t.status = "graded"
         scores = [t.score or 0.0 for t in tasks.values()]
+        attempt.finished_at = utcnow()
         attempt.raw_score = round(sum(scores) / max(len(scores), 1), 1)
         attempt.summary = str(grade.get("overall_comment", ""))
         attempt.weak_concepts = [str(c) for c in grade.get("weak_concepts", [])][:8]
@@ -624,7 +747,8 @@ def tasks_json(tasks: list[Task], reveal_hints: bool = True) -> list[dict[str, A
         {
             "id": t.id, "title": t.title, "statement": t.statement, "kind": t.kind, "language": t.language,
             "concept": t.concept, "bloom": t.bloom, "scaffold": t.scaffold, "confidence": t.confidence,
-            "starter_files": [f.get("path") for f in t.starter_files], "status": t.status, "from_author": t.excerpt_id is not None,
+            "starter_files": [f.get("path") for f in t.starter_files], "folder": t.workspace_folder or "",
+            "status": t.status, "from_author": t.excerpt_id is not None,
             "score": t.score, "feedback": t.feedback, "hints": t.hints if reveal_hints else [],
         }  # fmt: skip
         for t in tasks

@@ -30,6 +30,10 @@ type Props = {
   lockReason?: string | null;
   /** The course author's own tools. */
   customTools?: CustomToolDto[];
+  /** Stage folder (course/topic/practice or .../exam): the file tree shows every task of this stage. */
+  fileScope?: string;
+  /** Current task folder; new root-level files are created here and the runner only sees this task's files. */
+  fileTaskFolder?: string;
 };
 
 type Panes = { tasks: boolean; canvas: boolean; tools: boolean };
@@ -146,7 +150,7 @@ export default function Workspace(props: Props) {
   );
 }
 
-function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, helper, deadline, timeLimitMin, lockReason }: Props) {
+function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, helper, deadline, timeLimitMin, lockReason, fileScope, fileTaskFolder }: Props) {
   const catalog = useToolCatalog();
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
@@ -178,6 +182,20 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
   const zTop = useRef(1);
   const instancesRef = useRef<ToolInstance[]>([]);
   instancesRef.current = instances;
+  const scopePrefix = fileScope ? fileScope.replace(/\/+$/, "") + "/" : "";
+  const taskPrefix = fileTaskFolder ? fileTaskFolder.replace(/\/+$/, "") + "/" : "";
+  const visibleFileCount = scopePrefix ? files.filter((f) => f.startsWith(scopePrefix) && !f.endsWith("/.keep")).length : 0;
+  // root-level “+ Файл” belongs to the current task, even though the tree shows the whole stage
+  const createDir = scopePrefix && taskPrefix.startsWith(scopePrefix) ? taskPrefix.slice(scopePrefix.length).replace(/\/+$/, "") : "";
+  const runPrefix = taskPrefix || scopePrefix;
+
+  // a new task shows only its own files: close tabs left over from other tasks
+  useEffect(() => {
+    if (!fileScope) return;
+    const prefix = fileScope.replace(/\/+$/, "") + "/";
+    setTabs((t) => t.filter((x) => x === CANVAS || x.startsWith(prefix)));
+    setActive((a) => (a === CANVAS || a.startsWith(prefix) ? a : CANVAS));
+  }, [fileScope]);
 
   // stable identities: CanvasBoard is memoised and Excalidraw re-renders on every prop change
   const onScene = useCallback((els: readonly any[]) => {
@@ -367,7 +385,8 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
     try {
       if (lang === "python") {
         const all: Record<string, string> = {};
-        for (const p of files.filter((f) => f.endsWith(".py") || f.endsWith(".txt") || f.endsWith(".csv") || f.endsWith(".json"))) {
+        const sourceFiles = runPrefix ? files.filter((f) => f.startsWith(runPrefix)) : files;
+        for (const p of sourceFiles.filter((f) => f.endsWith(".py") || f.endsWith(".txt") || f.endsWith(".csv") || f.endsWith(".json"))) {
           all[p] = contents[p] ?? (await readFile(p));
         }
         all[active] = contents[active] ?? "";
@@ -458,11 +477,16 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
                   <button className="ws-filetree-head" onClick={toggleFiles} aria-expanded={filesOpen}>
                     <span className={`chev ${filesOpen ? "open" : ""}`}>▸</span>
                     <span className="ws-section-title" style={{ margin: 0 }}>🗂 Пространство</span>
-                    <span className="small muted">{files.length}</span>
+                    <span className="small muted" title={fileScope || undefined}>{visibleFileCount}</span>
                   </button>
                   {filesOpen && (
                     <div className="ws-filetree-body">
-                      <FileTree courseId={courseId} files={files} active={active === CANVAS ? null : active} onOpen={openFile} onChanged={refreshFiles} />
+                      {fileScope ? (
+                        <FileTree courseId={courseId} files={files} active={active === CANVAS ? null : active} scope={fileScope}
+                          createDir={createDir} onOpen={openFile} onChanged={refreshFiles} />
+                      ) : (
+                        <div className="small muted" style={{ padding: "6px 10px" }}>Папка задания ещё не готова.</div>
+                      )}
                     </div>
                   )}
                 </div>

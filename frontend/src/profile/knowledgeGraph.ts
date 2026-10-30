@@ -10,6 +10,9 @@ export type ProfileT = {
   mind_axes: Record<string, string>;
   strengths: string[];
   growth_areas: string[];
+  /** AI-written explanation of the concrete learning moments behind each profile section
+   * (keys: mind, writing, meta, autonomy); empty until the profile has been refreshed. */
+  section_notes: Record<string, string>;
   profile_updated_at: string | null;
   integrity: {
     typing_cpm: number | null; flags: Record<string, number>; pastes_30d: number; typed_segments_30d: number; total_events: number;

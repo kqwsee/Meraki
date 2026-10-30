@@ -198,6 +198,18 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 .modal-backdrop { position: fixed; inset: 0; background: rgba(5, 5, 4, 0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
 .modal { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 30px 80px rgba(0, 0, 0, .6); width: min(580px, 100%); max-height: 90vh; overflow: auto; padding: 28px; }
 .modal h2 { margin-bottom: 14px; }
+/* note viewer/editor: a large pane (87.5% of the viewport, i.e. 70% + 25%) whose body scrolls
+   or grows inside, while the title and footer stay put */
+.modal.wide { width: 87.5vw; height: 87.5vh; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; }
+.modal.wide .note-view { flex: 1; min-height: 0; overflow: auto; }
+.modal.wide .note-edit { flex: 1; min-height: 0; }
+.modal.wide .note-edit input { flex-shrink: 0; }
+.modal.wide .note-edit textarea { flex: 1; min-height: 0; resize: none; }
+
+.note-card { cursor: pointer; transition: border-color .12s, transform .12s; }
+.note-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.note-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note-excerpt { margin: 8px 0 0; }
 
 .empty { padding: 36px; text-align: center; color: var(--muted); border: 1px dashed var(--border-strong); border-radius: var(--radius); background: rgba(255, 255, 255, 0.015); }
 
@@ -582,7 +594,8 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 /* ---------- memory / profile knowledge graph ---------- */
 .mem-graph { display: flex; flex-direction: column; min-height: 0; }
 .mem-graph.fill { height: 100%; }
-.mem-graph-canvas { position: relative; min-height: 0; }
+.mem-graph-canvas { position: relative; min-height: 0; cursor: grab; }
+.mem-graph-canvas.panning, .mem-graph-canvas.panning .mem-node { cursor: grabbing; }
 .mem-graph.fill .mem-graph-canvas { flex: 1; min-height: 0; }
 .mem-graph svg { display: block; touch-action: none; }
 .mem-graph .mem-link { stroke: var(--border-strong); stroke-width: 1.2; }
@@ -593,6 +606,47 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 .mem-node text { font-size: 10.5px; fill: var(--muted); pointer-events: none; user-select: none; opacity: 0; transition: opacity .12s; }
 .mem-node.course text { font-size: 12.5px; fill: var(--text-strong); font-weight: 600; opacity: 1; }
 .mem-node:hover text { opacity: 1; }
+/* profile sections as square, rounded tiles with an icon and a name — the whole block is
+   centered: heading, hint and the tile grid all sit in the middle of the card */
+.section-picker { text-align: center; }
+.section-tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 160px)); gap: 12px;
+  margin: 14px auto 0; justify-content: center;
+}
+.section-tile {
+  aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px; text-align: center; font: inherit; color: var(--text); cursor: pointer;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius);
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.section-tile:hover { border-color: var(--accent); background: rgba(255, 255, 255, 0.07); transform: translateY(-2px); }
+.section-tile:active { transform: translateY(0); }
+.section-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-tile-icon { font-size: 34px; line-height: 1; }
+.section-tile-title { font-size: 13px; font-weight: 600; line-height: 1.3; }
+
+/* "what influenced this section" explainer at the top of a section modal */
+.section-factors {
+  margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03); font-size: 12.5px; line-height: 1.55; color: var(--muted);
+}
+.section-factors b { color: var(--text); font-weight: 600; }
+.section-factors ul { margin: 6px 0 0; padding-left: 18px; }
+.section-factors li + li { margin-top: 3px; }
+/* AI-written note about the most influential learning moments */
+.section-factors.ai { color: var(--text); border-color: var(--accent-line); background: var(--accent-soft); }
+.section-factors.ai .md { font-size: inherit; line-height: inherit; }
+.section-factors.ai .md p { margin: 4px 0 0; }
+.section-factors.ai .md ul, .section-factors.ai .md ol { margin: 4px 0 0; padding-left: 18px; }
+.section-factors.ai .md > :first-child { margin-top: 6px; }
+
+.mem-graph-zoom {
+  position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; align-items: center; gap: 2px;
+  padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: rgba(10, 12, 11, 0.72); backdrop-filter: blur(6px);
+}
+.mem-graph-zoom .btn { min-width: 30px; padding: 0 8px; }
+.mem-graph-zoom span { min-width: 38px; text-align: center; }
 .mem-graph-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
 .mem-graph-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
 

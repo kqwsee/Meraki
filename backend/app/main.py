@@ -13,6 +13,7 @@ from .config import BASE_DIR, settings
 from .db import init_db
 from .routers import adventures, auth, courses, learn, pins, profile, telemetry, tools, visuals, workspace
 from .services.sessions import idle_sweeper
+from .services.workspace_layout import migrate_workspace_layout
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -20,6 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    migrate_workspace_layout()
     memory.start_memory()
     sweeper = asyncio.create_task(idle_sweeper())
     yield

@@ -31,6 +31,9 @@ class User(Base):
     growth_areas: Mapped[list[str]] = mapped_column(JSON, default=list)
     # AI-assigned course for memory facts, keyed by "predicate:object" -> course_id (knowledge-map clustering)
     fact_clusters: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
+    # AI-written "what shaped this number" explanations for profile sections:
+    # {"mind": "...", "writing": "...", "meta": "...", "autonomy": "..."}
+    section_notes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     typing_baseline: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {"cpm": 180, "samples": 12}
     writing_profile: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # keystroke process features, see integrity.py
     consent_telemetry: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -274,6 +277,8 @@ class Task(Base):
     scaffold: Mapped[str] = mapped_column(String(20), default="")  # worked | predict | modify | make | transfer | interleaved
     confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)  # learner's 1..5 self-rating at submission
     starter_files: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    # Folder in the virtual workspace: course / topic / stage / this task (see services/workspace_layout.py)
+    workspace_folder: Mapped[str] = mapped_column(String(500), default="")
     rubric: Mapped[str] = mapped_column(Text, default="")
     solution: Mapped[str] = mapped_column(Text, default="")  # reference solution, never shown to the learner
     hints: Mapped[list[str]] = mapped_column(JSON, default=list)
