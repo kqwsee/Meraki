@@ -52,6 +52,7 @@ async def profile(user: User = Depends(current_user), db: Session = Depends(get_
         "mind_axes": MIND_AXES,
         "strengths": user.strengths,
         "growth_areas": user.growth_areas,
+        "section_notes": user.section_notes or {},
         "profile_updated_at": user.profile_updated_at.isoformat() if user.profile_updated_at else None,
         "integrity": integrity.user_stats(db, user),
         "reviews": _review_stats(db, user.id),

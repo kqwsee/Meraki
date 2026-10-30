@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import Markdown from "../components/Markdown";
@@ -65,6 +65,18 @@ export default function Profile() {
   const wp = p.integrity.writing_profile ?? {};
   const cal = p.integrity.calibration;
 
+  /** "What shaped this section" block: the AI's note about the most influential learning moments
+   * when the profile has one, otherwise the static hints about where the data comes from. */
+  const factors = (id: ProfileSection, fallback: ReactNode) => {
+    const note = p.section_notes?.[id]?.trim();
+    return (
+      <div className={`section-factors ${note ? "ai" : ""}`}>
+        <b>{note ? "ИИ-наставник: что сильнее всего повлияло" : "Основные моменты, которые повлияли:"}</b>
+        {note ? <Markdown>{note}</Markdown> : fallback}
+      </div>
+    );
+  };
+
   /** Contents of the selected profile section, shown inside the section modal. Arrow const (not a
    * hoisted function) so TypeScript keeps the `p` non-null narrowing from the guard above. */
   const sectionBody = (id: ProfileSection) => {
@@ -81,14 +93,13 @@ export default function Profile() {
       case "mind":
         return (
           <>
-            <div className="section-factors">
-              <b>Основные моменты, которые повлияли:</b>
+            {factors("mind", (
               <ul>
                 <li>уровни прологов, стиль мышления и интересы, которые наставник отмечает в темах;</li>
                 <li>оценки практики, экзаменов и проверок понимания после экзамена;</li>
                 <li>факты и итоги сессий из долговременной памяти наставника.</li>
               </ul>
-            </div>
+            ))}
             {Object.keys(p.mind_profile).length ? (
               <>
                 <p className="small">
@@ -123,15 +134,14 @@ export default function Profile() {
       case "writing":
         return (
           <>
-            <div className="section-factors">
-              <b>Основные моменты, которые повлияли:</b>
+            {factors("writing", (
               <ul>
                 <li>скорость набора по сравнению с твоей обычной;</li>
                 <li>длина фрагментов между паузами ≥2 с — беглость;</li>
                 <li>частота правок и удалений на знак — переформулирование по ходу;</li>
                 <li>доля пауз в начале предложений — обдумываешь заранее или по ходу письма.</li>
               </ul>
-            </div>
+            ))}
             <p className="small muted">По ритму ввода: паузы от 2 с — время на обдумывание, правки — переформулирование по ходу. Это не оценка, а описание стиля.</p>
             {p.integrity.writing_traits.length ? <ul>{p.integrity.writing_traits.map((t) => <li key={t}>{t}</li>)}</ul> : <p className="muted small">Данных пока мало.</p>}
             <table className="md small" style={{ width: "100%" }}>
@@ -148,13 +158,12 @@ export default function Profile() {
       case "meta":
         return (
           <>
-            <div className="section-factors">
-              <b>Основные моменты, которые повлияли:</b>
+            {factors("meta", (
               <ul>
                 <li>уверенность 1–5, которую ты указываешь перед ответом, против фактической оценки задания;</li>
                 <li>карточки интервального повторения: сколько их, сколько повторений сделано и какая доля материала удерживается.</li>
               </ul>
-            </div>
+            ))}
             {cal ? (
               <>
                 <div className="bars">
@@ -179,15 +188,14 @@ export default function Profile() {
       case "autonomy":
         return (
           <>
-            <div className="section-factors">
-              <b>Основные моменты, которые повлияли:</b>
+            {factors("autonomy", (
               <ul>
                 <li>вставки из буфера и крупные нестандартные вставки на практике и экзамене;</li>
                 <li>серии набора заметно быстрее твоей обычной скорости без пауз и правок;</li>
                 <li>уход из вкладки во время экзамена;</li>
                 <li>объём собственного набора — сегменты ввода за последние 30 дней.</li>
               </ul>
-            </div>
+            ))}
             <p className="small muted">На практике это только записывается и влияет на состав экзамена, а на экзамене — повод для вопросов по решению.</p>
             <p className="small">Событий записано: {p.integrity.total_events}. За 30 дней: сегментов набора {p.integrity.typed_segments_30d}, вставок {p.integrity.pastes_30d}.</p>
             {Object.keys(p.integrity.flags).length ? (

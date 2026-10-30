@@ -633,6 +633,12 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 .section-factors b { color: var(--text); font-weight: 600; }
 .section-factors ul { margin: 6px 0 0; padding-left: 18px; }
 .section-factors li + li { margin-top: 3px; }
+/* AI-written note about the most influential learning moments */
+.section-factors.ai { color: var(--text); border-color: var(--accent-line); background: var(--accent-soft); }
+.section-factors.ai .md { font-size: inherit; line-height: inherit; }
+.section-factors.ai .md p { margin: 4px 0 0; }
+.section-factors.ai .md ul, .section-factors.ai .md ol { margin: 4px 0 0; padding-left: 18px; }
+.section-factors.ai .md > :first-child { margin-top: 6px; }
 
 .mem-graph-zoom {
   position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; align-items: center; gap: 2px;

@@ -7,7 +7,8 @@ import { useWorkspace } from "./context";
 
 export type TaskT = {
   id: number; title: string; statement: string; kind: string; language: string; concept: string; bloom: string; scaffold: string;
-  starter_files: string[]; status: string; score: number | null; feedback: string; hints: string[]; confidence: number | null;
+  starter_files: string[]; /** course/topic/stage/task folder in the workspace */ folder: string;
+  status: string; score: number | null; feedback: string; hints: string[]; confidence: number | null;
   from_author?: boolean;
 };
 
@@ -47,11 +48,14 @@ function useAttachments(task: TaskT | undefined) {
   const ws = useWorkspace()!;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [withCanvas, setWithCanvas] = useState(false);
+  const taskFolder = task?.folder || (task?.starter_files[0] ? task.starter_files[0].split("/").slice(0, -1).join("/") : "");
+  const folderPrefix = taskFolder ? taskFolder.replace(/\/+$/, "") + "/" : "";
+  const visibleFiles = ws.files.filter((f) => !f.endsWith(".keep") && (!folderPrefix || f.startsWith(folderPrefix)));
   useEffect(() => {
     if (!task) return;
     const init: Record<string, boolean> = {};
     task.starter_files.forEach((p) => (init[p] = true));
-    if (ws.activePath) init[ws.activePath] = true;
+    if (ws.activePath && (!folderPrefix || ws.activePath.startsWith(folderPrefix))) init[ws.activePath] = true;
     setSelected(init);
     setWithCanvas(task.kind === "canvas");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,9 +74,10 @@ function useAttachments(task: TaskT | undefined) {
       </summary>
       <div className="col" style={{ gap: 2, marginTop: 4 }}>
         <label className="checkbox"><input type="checkbox" checked={withCanvas} onChange={(e) => setWithCanvas(e.target.checked)} /> холст (описание рисунка)</label>
-        {ws.files.filter((f) => !f.endsWith(".keep")).map((f) => (
+        {visibleFiles.map((f) => (
           <label key={f} className="checkbox">
-            <input type="checkbox" checked={!!selected[f]} onChange={(e) => setSelected((s) => ({ ...s, [f]: e.target.checked }))} /> {f}
+            <input type="checkbox" checked={!!selected[f]} onChange={(e) => setSelected((s) => ({ ...s, [f]: e.target.checked }))} />
+            {" "}{folderPrefix && f.startsWith(folderPrefix) ? f.slice(folderPrefix.length) : f}
           </label>
         ))}
       </div>

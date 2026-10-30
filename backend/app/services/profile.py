@@ -5,7 +5,7 @@ from sqlalchemy import select
 from .. import memory
 from ..db import SessionLocal
 from ..llm import get_llm
-from ..models import Enrollment, ExamAttempt, GraphNode, NodeProgress, User, utcnow
+from ..models import Enrollment, ExamAttempt, GraphNode, IntegrityFlag, NodeProgress, ReviewCard, User, utcnow
 from ..prompts import PROFILE_SCHEMA, PROFILE_SYSTEM
 from . import context as ctx
 from . import integrity
@@ -41,6 +41,37 @@ async def update_profile(user_id: int) -> None:
                 lines.append(f"- Проверка понимания после экзамена: {att.understanding:.2f}")
         stats = integrity.user_stats(db, user)
         lines.append(f"\n## Самостоятельность и ввод\n{stats}")
+        # concrete moments ("which topic, which weak card, which flag") so section_notes can name
+        # what actually shaped each profile number instead of paraphrasing it
+        cards = db.scalars(select(ReviewCard).where(ReviewCard.user_id == user_id)).all()
+        flags = db.scalars(
+            select(IntegrityFlag)
+            .where(IntegrityFlag.user_id == user_id)
+            .order_by(IntegrityFlag.created_at.desc())
+            .limit(20)
+        ).all()
+        node_ids = {c.node_id for c in cards} | {f.node_id for f in flags if f.node_id is not None}
+        titles = (
+            dict(db.execute(select(GraphNode.id, GraphNode.title).where(GraphNode.id.in_(node_ids))).all())
+            if node_ids else {}
+        )
+        if cards:
+            reps = sum(c.reps for c in cards)
+            lapses = sum(c.lapses for c in cards)
+            lines.append(
+                f"\n## Повторение (интервальные карточки)\n"
+                f"Карточек: {len(cards)}, повторений: {reps}, забываний: {lapses}"
+            )
+            weakest = sorted((c for c in cards if c.reps), key=lambda c: -(c.lapses / max(c.reps, 1)))[:5]
+            for c in weakest:
+                lines.append(f"- «{titles.get(c.node_id, '?')}»: повторений {c.reps}, забываний {c.lapses}")
+        if flags:
+            lines.append("\n## Сигналы самостоятельности (последние)")
+            # kind + stage + topic + details (chars, cpm, away_ms) — enough to name the moment
+            for f in flags:
+                lines.append(
+                    f"- {f.kind} на этапе {f.stage}, тема «{titles.get(f.node_id, '?')}», детали: {f.detail}"
+                )
     recalled = await memory.recall(user_id, "сильные стороны, трудности, интересы, стиль мышления ученика", limit=6)
     if recalled:
         lines.append("\n## Долговременная память\n" + "\n".join(f"- {r}" for r in recalled))
@@ -69,6 +100,11 @@ async def update_profile(user_id: int) -> None:
         user.mind_profile = {k: round(max(0.0, min(1.0, float(v))), 2) for k, v in (result.get("mind_profile") or {}).items()}
         user.strengths = [str(s) for s in result.get("strengths", [])][:6]
         user.growth_areas = [str(s) for s in result.get("growth_areas", [])][:6]
+        user.section_notes = {
+            k: str(v).strip()[:800]
+            for k, v in (result.get("section_notes") or {}).items()
+            if k in ("mind", "writing", "meta", "autonomy") and str(v).strip()
+        }
         course_by_title = {
             e.course.title.strip().lower(): e.course_id
             for e in db.scalars(select(Enrollment).where(Enrollment.user_id == user_id)).all()
