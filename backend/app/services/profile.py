@@ -8,7 +8,7 @@ from ..llm import get_llm
 from ..models import Enrollment, ExamAttempt, GraphNode, IntegrityFlag, NodeProgress, ReviewCard, User, utcnow
 from ..prompts import PROFILE_SCHEMA, PROFILE_SYSTEM
 from . import context as ctx
-from . import integrity
+from . import integrity, talents
 
 log = logging.getLogger("meraki.profile")
 
@@ -96,10 +96,18 @@ async def update_profile(user_id: int) -> None:
         user = db.get(User, user_id)
         if user is None:
             return
+        old_scores = dict(user.mind_profile or {})
         user.talents = str(result.get("talents", ""))
         user.mind_profile = {k: round(max(0.0, min(1.0, float(v))), 2) for k, v in (result.get("mind_profile") or {}).items()}
         user.strengths = [str(s) for s in result.get("strengths", [])][:6]
         user.growth_areas = [str(s) for s in result.get("growth_areas", [])][:6]
+        user.talent_notes = {
+            k: str(v).strip()[:800]
+            for k, v in (result.get("talent_notes") or {}).items()
+            if k in ("engineering", "analytical", "it", "natural_science", "humanities", "creative", "practical")
+            and str(v).strip()
+        }
+        talents.record_profile_scores(db, user, old_scores)
         user.section_notes = {
             k: str(v).strip()[:800]
             for k, v in (result.get("section_notes") or {}).items()
@@ -125,3 +133,6 @@ async def update_profile(user_id: int) -> None:
         user.profile_updated_at = utcnow()
         db.commit()
     await memory.remember(user_id, "profile", f"Профиль обновлён: {result.get('talents', '')}")
+    # Backfill evidence for recent messages the incremental analyser has not seen yet. Debounced
+    # and non-blocking, so the route replan that follows this profile update is not delayed.
+    talents.schedule_analysis(user_id, scan_all=True)

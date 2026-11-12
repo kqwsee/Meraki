@@ -8,7 +8,7 @@ from ..background import spawn
 from ..db import get_db
 from ..models import Enrollment, Event, GraphNode, MemoryEntry, Note, ReviewCard, User
 from ..security import current_user
-from ..services import integrity, reviews
+from ..services import integrity, reviews, talents
 from ..services.context import MIND_AXES, course_progress
 from ..services.profile import update_profile
 
@@ -93,6 +93,35 @@ def _review_stats(db: Session, user_id: int) -> dict:
 async def refresh_profile(user: User = Depends(current_user)):
     spawn(update_profile(user.id))
     return {"ok": True}
+
+
+# ---------- talents: evidence behind each indicator ----------
+
+
+@router.get("/profile/talents")
+def talents_overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return talents.overview(db, user)
+
+
+@router.post("/profile/talents/analyze")
+async def analyze_talents(user: User = Depends(current_user)):
+    """Kick the AI over recent learner messages without waiting for a full profile refresh."""
+    talents.schedule_analysis(user.id, scan_all=True)
+    return {"ok": True}
+
+
+@router.get("/profile/talents/{talent}")
+def talent_detail(talent: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    data = talents.detail(db, user, talent)
+    if data is None:
+        raise HTTPException(404, "Такого таланта нет")
+    return data
+
+
+@router.get("/profile/writing")
+def writing_evidence(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Concrete learner messages with typing metrics for the "how you write and think" section."""
+    return talents.writing_evidence(db, user)
 
 
 @router.get("/notes")

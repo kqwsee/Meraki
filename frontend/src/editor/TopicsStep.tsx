@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import GraphHistory from "../components/GraphHistory";
 import GraphView from "../components/GraphView";
 import { ErrorBox, Modal } from "../components/ui";
 import type { CourseFull, Excerpt, RouteSettings, TopicNode } from "./types";
@@ -28,6 +29,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
   const [editNode, setEditNode] = useState<TopicNode | null>(null);
   const [newNode, setNewNode] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [history, setHistory] = useState(false);
   const id = course.id;
   const processing = course.status === "processing";
 
@@ -82,7 +84,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
 
   function build() {
     if (course.nodes.length && !confirm(
-      "Перестроить граф заново?\n\nИИ создаст темы с нуля. Ручные правки (темы, стрелки, порядок, закрепления в маршруте) и прогресс учеников по этому курсу будут удалены.\n\nОбязательные фрагменты останутся, но их придётся заново привязать к новым темам.",
+      "Перестроить граф заново?\n\nИИ создаст темы с нуля. Ручные правки (темы, стрелки, порядок, закрепления в маршруте) и прогресс учеников по этому курсу будут удалены.\n\nТекущий граф сохранится в истории графа, но актуальной станет новая версия. Обязательные фрагменты останутся, но их придётся заново привязать к новым темам.",
     )) return;
     run("build", async () => { await api.post(`/courses/${id}/build`); await load(); });
   }
@@ -138,6 +140,12 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
               Чтобы добавить стрелку, потяните от нижней точки темы к другой теме. Нажмите на стрелку, чтобы убрать её, на тему — чтобы изменить.
             </p>
             <ErrorBox error={graphError} />
+            <div className="row mb" style={{ gap: 8 }}>
+              <button className="btn sm" disabled={!!busy} onClick={() => setHistory(true)} title="Все варианты графа: прошлые — только для просмотра">
+                🕘 История графа
+              </button>
+              <span className="small muted">как менялся граф</span>
+            </div>
             <GraphView nodes={course.nodes.filter((n) => !n.personal)} edges={course.edges} showStatus={false} height={500}
               editable onConnect={(s, t) => editGraph(() => api.post(`/courses/${id}/edges`, { source: s, target: t }))} onEdgeClick={removeEdge}
               onSelect={(n) => setEditNode(course.nodes.find((x) => x.id === n.id)!)} />
@@ -214,6 +222,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
         <NewNodeModal courseId={id} topics={order} onClose={() => setNewNode(false)}
           onSaved={async () => { setNewNode(false); await load(); }} onError={onError} />
       )}
+      {history && <GraphHistory courseId={id} onClose={() => setHistory(false)} />}
     </>
   );
 }

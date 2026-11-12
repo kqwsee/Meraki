@@ -1,13 +1,13 @@
 import logging
 import re
 
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 
 from ..db import SessionLocal
 from ..llm import get_llm
 from ..models import Course, GraphEdge, GraphNode, LearnerPath, NodeProgress, PinnedExcerpt, TopicVisual
 from ..prompts import COURSE_GRAPH_SCHEMA, COURSE_GRAPH_SYSTEM, DOMAINS, TOOL_CATALOG
-from . import materials
+from . import graph_versions, materials, path as route
 
 log = logging.getLogger("meraki.course")
 
@@ -79,6 +79,11 @@ async def build_course_graph(course_id: int) -> None:
         course = db.get(Course, course_id)
         if course is None:
             return
+        # the graph about to be wiped stays readable as a past version; only the new one will be actual
+        graph_versions.archive(db, course, "Заменён перестройкой графа с ИИ")
+        # the rebuild resets every learner's personal route, so each one is saved into that learner's history
+        for uid in list(db.scalars(select(LearnerPath.user_id).where(LearnerPath.course_id == course_id)).all()):
+            route.archive_route(db, uid, course_id, "Граф курса перестроен заново")
         node_ids = [n.id for n in course.nodes]
         if node_ids:
             db.execute(delete(NodeProgress).where(NodeProgress.node_id.in_(node_ids)))

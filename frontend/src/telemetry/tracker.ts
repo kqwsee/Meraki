@@ -135,6 +135,9 @@ class Tracker {
 
 export const tracker = new Tracker();
 
+/** A paste or deletion inside one draft: the text before and after it, for the talent evidence page. */
+export type DraftRevision = { kind: "paste" | "delete" | "drop" | "insert"; before: string; after: string };
+
 /** One continuous typing run in one field. */
 export class TypingRecorder {
   private target: string;
@@ -148,12 +151,36 @@ export class TypingRecorder {
   private ikis: number[] = [];
   private text = "";
   private lastChar = "";
+  /** last DOM value of the wired field, so a paste/delete can be diffed against it */
+  lastValue = "";
+  private revisions: DraftRevision[] = [];
   /** totals since the last takeStats() — attached to chat messages */
   private total = { chars: 0, ms: 0, pauses_2s: 0, backspaces: 0 };
 
   constructor(target: string, surface: string) {
     this.target = target;
     this.surface = surface;
+  }
+
+  /** Keep the recorder in sync with programmatic value changes (e.g. the composer is cleared on send). */
+  sync(value: string) {
+    this.lastValue = value;
+  }
+
+  /** Remember what a paste/delete did to the draft; the last few travel with the message. */
+  recordRevision(kind: DraftRevision["kind"], before: string, after: string) {
+    if (before === after) return;
+    const b = before.slice(0, 2000);
+    const a = after.slice(0, 2000);
+    if (b === a) return;
+    // a run of backspaces arrives as one input event per character; keep it as a single edit
+    const last = this.revisions[this.revisions.length - 1];
+    if (last && last.kind === kind && last.after === b) {
+      last.after = a;
+      return;
+    }
+    this.revisions.push({ kind, before: b, after: a });
+    if (this.revisions.length > 8) this.revisions = this.revisions.slice(-8);
   }
 
   setTarget(target: string) {
@@ -219,8 +246,9 @@ export class TypingRecorder {
   /** Flush and return typing stats accumulated since the previous call. */
   takeStats() {
     this.flush();
-    const s = this.total;
+    const s = { ...this.total, revisions: this.revisions };
     this.total = { chars: 0, ms: 0, pauses_2s: 0, backspaces: 0 };
+    this.revisions = [];
     return s;
   }
 
@@ -252,20 +280,29 @@ export function textareaHandlers(rec: TypingRecorder, target: string, surface: s
     onInput: (e: React.FormEvent<HTMLTextAreaElement | HTMLInputElement>) => {
       const ie = e.nativeEvent as InputEvent;
       const kind = ie.inputType ?? "";
-      if (kind.startsWith("delete")) rec.deleted();
-      else if (kind === "insertFromPaste" || kind === "insertFromDrop") return; // logged by onPaste / onDrop
-      else if (kind === "insertLineBreak" || kind === "insertParagraph") rec.typed("\n");
+      const before = rec.lastValue;
+      const after = e.currentTarget.value;
+      if (kind.startsWith("delete")) {
+        rec.recordRevision("delete", before, after);
+        rec.deleted();
+      } else if (kind === "insertFromPaste") {
+        rec.recordRevision("paste", before, after); // logged by onPaste for the clipboard source
+      } else if (kind === "insertFromDrop") {
+        rec.recordRevision("drop", before, after);
+      } else if (kind === "insertLineBreak" || kind === "insertParagraph") rec.typed("\n");
       else if (kind === "insertCompositionText") rec.typed((ie.data ?? "").slice(-1));
       else if (kind.startsWith("insert")) {
         const data = ie.data ?? "";
         // one keystroke inserts 1 char; a long single insert is autocorrect, dictation or injected text
         if (data.length > 3) {
+          rec.recordRevision("insert", before, after);
           tracker.log("bulk_insert", target, {
             chars: data.length, text: data.slice(0, 2000), surface,
             via: kind === "insertReplacementText" ? "autocorrect" : "insert",
           });
         } else if (data) rec.typed(data);
       }
+      rec.sync(after);
     },
     onPaste: (e: React.ClipboardEvent) => {
       const text = e.clipboardData.getData("text");

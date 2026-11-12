@@ -34,6 +34,8 @@ class User(Base):
     # AI-written "what shaped this number" explanations for profile sections:
     # {"mind": "...", "writing": "...", "meta": "...", "autonomy": "..."}
     section_notes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    # Per-talent descriptions (keys are the mind axes); the evidence itself lives in TalentSignal.
+    talent_notes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     typing_baseline: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {"cpm": 180, "samples": 12}
     writing_profile: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # keystroke process features, see integrity.py
     consent_telemetry: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -213,6 +215,26 @@ class GraphEdge(Base):
     dst_id: Mapped[int] = mapped_column(ForeignKey("graph_nodes.id", ondelete="CASCADE"))  # depends on src
 
 
+class GraphVersion(Base):
+    """A graph the author used to have, saved when a rebuild replaced it.
+
+    Only the live graph (GraphNode / GraphEdge) is actual: learners see it and progress is counted on it.
+    These rows are read-only history, so the author can look at every earlier variant of the course map.
+    """
+
+    __tablename__ = "graph_versions"
+    __table_args__ = (UniqueConstraint("course_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)  # 1-based ordinal of the graph; the live one is version N+1
+    reason: Mapped[str] = mapped_column(String(120), default="")  # why it stopped being the current graph
+    summary: Mapped[str] = mapped_column(Text, default="")  # the course AI summary as it was then
+    nodes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # topics and their fields
+    edges: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # prerequisites between those topics
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Enrollment(Base):
     __tablename__ = "enrollments"
     __table_args__ = (UniqueConstraint("user_id", "course_id"),)
@@ -254,8 +276,10 @@ class Message(Base):
     stage: Mapped[str] = mapped_column(String(20))
     role: Mapped[str] = mapped_column(String(20))  # user | assistant
     content: Mapped[str] = mapped_column(Text)
-    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # typing stats for user messages
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # typing stats and draft revisions for user messages
     memory_filed: Mapped[bool] = mapped_column(Boolean, default=False)  # verbatim copy already filed into MemPalace
+    # The talent analyser has already looked at this user message (see services/talents.py)
+    talent_analyzed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -463,3 +487,70 @@ class LearnerPath(Base):
     message: Mapped[str] = mapped_column(Text, default="")  # explanation shown to the learner
     replans: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class LearnerPathVersion(Base):
+    """A learner's route as it was before the next AI re-plan replaced it.
+
+    The live route is LearnerPath + the visible GraphNodes (author topics and personal bridges); these
+    rows keep earlier variants of that map — order, modes, bridge topics and their statuses — so the
+    learner can see how their personal route changed. Only the live route is actual.
+    """
+
+    __tablename__ = "learner_path_versions"
+    __table_args__ = (UniqueConstraint("user_id", "course_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)  # 1-based; the live route is the next number
+    reason: Mapped[str] = mapped_column(String(120), default="")  # why this route stopped being current
+    message: Mapped[str] = mapped_column(Text, default="")  # the tutor's explanation at that moment
+    nodes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # topics and bridges with statuses
+    edges: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)  # hard prerequisites between them
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class TalentSignal(Base):
+    """One concrete piece of evidence behind a talent score.
+
+    Usually a learner message the AI read: the quote and the reason explain how it moved the indicator,
+    `before_text`/`after_text` keep a paste or deletion inside that message (the learner can see what
+    was there originally and what it became). A `profile` signal records a whole-profile recomputation.
+    """
+
+    __tablename__ = "talent_signals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    talent: Mapped[str] = mapped_column(String(40), index=True)
+    message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    node_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stage: Mapped[str] = mapped_column(String(20), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="message")  # message | profile
+    delta: Mapped[float] = mapped_column(Float, default=0.0)  # percentage points
+    score_before: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
+    score_after: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
+    reason: Mapped[str] = mapped_column(Text, default="")
+    excerpt: Mapped[str] = mapped_column(Text, default="")  # the learner's text block / quote
+    before_text: Mapped[str] = mapped_column(Text, default="")  # draft before a paste/delete, if any
+    after_text: Mapped[str] = mapped_column(Text, default="")  # draft after it
+    revision_kind: Mapped[str] = mapped_column(String(20), default="")  # paste | delete | insert
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class TalentScore(Base):
+    """History of a learner's talent scores, so every view can compare the current indicator
+    with the previous one (and the profile page can show that a number moved)."""
+
+    __tablename__ = "talent_scores"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    talent: Mapped[str] = mapped_column(String(40), index=True)
+    score: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
+    source: Mapped[str] = mapped_column(String(20), default="message")  # initial | profile | message
+    message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

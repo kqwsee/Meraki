@@ -9,13 +9,13 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import memory
 from ..db import SessionLocal
 from ..llm import get_llm
-from ..models import Course, ExamAttempt, GraphEdge, GraphNode, LearnerPath, NodeProgress, User
+from ..models import Course, ExamAttempt, GraphEdge, GraphNode, LearnerPath, LearnerPathVersion, NodeProgress, User
 from ..prompts import PATH_SCHEMA, PATH_SYSTEM
 from . import context as ctx
 
@@ -156,8 +156,96 @@ def route_view(db: Session, user_id: int, course_id: int) -> dict[str, Any]:
     }
 
 
+def route_snapshot(db: Session, user_id: int, course_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The learner's live route as plain data: author topics and personal bridges in study order.
+
+    Statuses and modes are frozen as they are right now, so an archived route can be rendered later
+    without the live progress or plan leaking into it.
+    """
+    course = db.get(Course, course_id)
+    if course is None:
+        return [], []
+    path = ensure_path(db, user_id, course_id)
+    nodes = visible_nodes(db, course_id, user_id)
+    prereq = hard_prereqs(db, course_id)
+    order = ordered_ids(nodes, prereq, effective_priority(course, nodes, path.order))
+    rank = {nid: i for i, nid in enumerate(order)}
+    by_id = {n.id: n for n in nodes}
+    done = {
+        p.node_id
+        for p in db.scalars(
+            select(NodeProgress).where(
+                NodeProgress.user_id == user_id,
+                NodeProgress.node_id.in_(list(by_id)),
+                NodeProgress.completed.is_(True),
+            )
+        ).all()
+    }
+    modes = path.modes if route_settings(course)["modes"] else {}
+    edges = [
+        {"source": src, "target": dst}
+        for dst, srcs in prereq.items()
+        if dst in by_id
+        for src in srcs
+        if src in by_id
+    ]
+    return (
+        [
+            {
+                "id": n.id,
+                "key": n.key,
+                "title": n.title,
+                "summary": n.summary,
+                "objectives": n.objectives,
+                "concepts": n.concepts,
+                "personal": n.owner_user_id is not None,
+                "rank": rank.get(n.id),
+                "completed": n.id in done,
+                "unlocked": n.owner_user_id is not None or prereq.get(n.id, set()) <= done,
+                "mode": "bridge" if n.owner_user_id else (modes.get(str(n.id)) or {}).get("mode", "standard"),
+            }
+            for n in sorted(nodes, key=lambda x: rank.get(x.id, len(nodes)))
+        ],
+        edges,
+    )
+
+
+def next_route_version(db: Session, user_id: int, course_id: int) -> int:
+    last = db.scalar(
+        select(func.max(LearnerPathVersion.version)).where(
+            LearnerPathVersion.user_id == user_id, LearnerPathVersion.course_id == course_id
+        )
+    ) or 0
+    return int(last) + 1
+
+
+def archive_route(db: Session, user_id: int, course_id: int, reason: str) -> LearnerPathVersion | None:
+    """Save the learner's route as it is right now, before a re-plan (or a course rebuild) replaces it."""
+    nodes, edges = route_snapshot(db, user_id, course_id)
+    if not nodes:
+        return None
+    path = ensure_path(db, user_id, course_id)
+    row = LearnerPathVersion(
+        user_id=user_id,
+        course_id=course_id,
+        version=next_route_version(db, user_id, course_id),
+        reason=reason,
+        message=path.message,
+        nodes=nodes,
+        edges=edges,
+    )
+    db.add(row)
+    return row
+
+
 def _slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9_]+", "_", value.lower()).strip("_")[:50] or "bridge"
+    # \w keeps Cyrillic letters. Stripping them turned every Russian bridge title into the same
+    # "bridge_bridge" key, which made the copies indistinguishable and defeated key-based dedup.
+    return re.sub(r"[^\w]+", "_", value.lower(), flags=re.UNICODE).strip("_")[:50] or "bridge"
+
+
+def _bridge_key(title: str, target_key: str) -> str:
+    return f"bridge_{_slug(title)}_{target_key}"[:80]
 
 
 async def replan(user_id: int, course_id: int) -> None:
@@ -184,7 +272,7 @@ async def replan(user_id: int, course_id: int) -> None:
             a = (p.assessment or {}) if p else {}
             reqs = [by_id[r].key for r in prereq.get(n.id, set()) if r in by_id]
             lines.append(
-                f"- key={n.key}{' [личная]' if n.owner_user_id else ''}: «{n.title}» — {status}; requires={reqs}; "
+                f"- key={n.key}{' [личная мостовая тема, уже в графе]' if n.owner_user_id else ''}: «{n.title}» — {status}; requires={reqs}; "
                 f"понятия: {', '.join(n.concepts)}"
                 + (f"; пролог-уровень {a.get('overall_level')}" if a else "")
                 + (f"; практика {p.practice_score}, экзамен {p.exam_score}" if p and (p.practice_score or p.exam_score) else "")
@@ -222,6 +310,8 @@ async def replan(user_id: int, course_id: int) -> None:
 
     with SessionLocal() as db:
         path = ensure_path(db, user_id, course_id)
+        # the route the AI is about to replace stays readable in the learner's personal history
+        archive_route(db, user_id, course_id, "Маршрут перестроен после пройденной темы")
         nodes = visible_nodes(db, course_id, user_id)
         by_key = {n.key: n for n in nodes}
         done = {p.node_id for p in db.scalars(select(NodeProgress).where(NodeProgress.user_id == user_id, NodeProgress.completed.is_(True))).all()}
@@ -231,20 +321,36 @@ async def replan(user_id: int, course_id: int) -> None:
         else:
             priority = list(path.order)  # effective_priority() applies the author order anyway
 
+        personal = [n for n in nodes if n.owner_user_id == user_id and n.kind != "side"]
+        route_ids = set(path.order)
         for b in plan.get("bridge", [])[: 1 if allowed["bridges"] else 0]:
             target = by_key.get(str(b.get("insert_before", "")))
             if target is None or target.id in done:
                 continue
-            bridge = GraphNode(
-                course_id=course_id, owner_user_id=user_id, key=f"bridge_{_slug(str(b.get('title', '')))}",
-                title=str(b.get("title", "Мостик"))[:200], summary=f"{b.get('summary', '')}\n\nПочему: {b.get('reason', '')}",
-                objectives=[str(x) for x in b.get("objectives", [])][:4], concepts=[str(x) for x in b.get("concepts", [])][:6],
-                order_index=target.order_index,
-            )  # fmt: skip
-            db.add(bridge)
-            db.flush()
-            idx = priority.index(target.id) if target.id in priority else len(priority)
-            priority.insert(idx, bridge.id)
+            title = str(b.get("title", "Мостик"))[:200]
+            same_target = [n for n in personal if n.order_index == target.order_index]
+            if not same_target:
+                # author edits can shift order_index; the same title still means the same bridge
+                same_target = [n for n in personal if _slug(n.title) == _slug(title)]
+            # Re-planning must not copy the same bridge on every pass: the AI often proposes the
+            # bridge it already sees. Prefer the copy that is actually in the route, then the
+            # newest one, and reuse it instead of inserting another duplicate.
+            bridge = next((n for n in same_target if n.id in route_ids), None) or max(
+                same_target, key=lambda n: n.id, default=None
+            )
+            if bridge is None:
+                bridge = GraphNode(
+                    course_id=course_id, owner_user_id=user_id, key=_bridge_key(title, target.key),
+                    title=title, summary=f"{b.get('summary', '')}\n\nПочему: {b.get('reason', '')}",
+                    objectives=[str(x) for x in b.get("objectives", [])][:4], concepts=[str(x) for x in b.get("concepts", [])][:6],
+                    order_index=target.order_index,
+                )  # fmt: skip
+                db.add(bridge)
+                db.flush()
+                personal.append(bridge)
+            if bridge.id not in done and bridge.id not in priority:
+                idx = priority.index(target.id) if target.id in priority else len(priority)
+                priority.insert(idx, bridge.id)
 
         modes = {}
         for m in plan.get("modes", []) if allowed["modes"] else []:

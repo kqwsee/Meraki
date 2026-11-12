@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import GraphHistory from "../components/GraphHistory";
 import GraphView, { type GEdge, type GNode } from "../components/GraphView";
 import { DOMAIN_ICONS, ErrorBox, Loading, Modal, MODE_LABELS, Progress, STAGE_NAMES } from "../components/ui";
 
@@ -33,6 +34,7 @@ export default function CoursePage() {
   const [busy, setBusy] = useState(false);
   const [offer, setOffer] = useState<Adventure | null>(null);
   const [taking, setTaking] = useState(false);
+  const [history, setHistory] = useState(false);
 
   // an older backend that does not know about adventures simply shows none
   const noAdventures = { enabled: false, dev: false, items: [], stats: { side_done: 0, encounters_done: 0 } };
@@ -229,7 +231,15 @@ export default function CoursePage() {
       )}
 
       <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) 340px", alignItems: "start" }}>
-        <GraphView nodes={graphNodes} edges={graphEdges} nextId={c.route.next_node_id} onSelect={select} />
+        <div style={{ minWidth: 0 }}>
+          <div className="row mb" style={{ gap: 8 }}>
+            <button className="btn sm" onClick={() => setHistory(true)} title="Все варианты графа: прошлые — только для просмотра">
+              🕘 История графа
+            </button>
+            <span className="small muted">как менялся граф</span>
+          </div>
+          <GraphView nodes={graphNodes} edges={graphEdges} nextId={c.route.next_node_id} onSelect={select} />
+        </div>
         <div className="card" style={{ padding: 18 }}>
           <div className="eyebrow mb">Темы маршрута</div>
           <div className="route">
@@ -262,6 +272,8 @@ export default function CoursePage() {
           </div>
         </div>
       </div>
+
+      {history && <GraphHistory courseId={c.id} onClose={() => setHistory(false)} />}
 
       {offer && (
         <Modal
