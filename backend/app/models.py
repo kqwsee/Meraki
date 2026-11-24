@@ -307,7 +307,9 @@ class Task(Base):
     solution: Mapped[str] = mapped_column(Text, default="")  # reference solution, never shown to the learner
     hints: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="open")  # open | graded
-    answer: Mapped[str] = mapped_column(Text, default="")
+    answer: Mapped[str] = mapped_column(Text, default="")  # rendered submission: text + attached files + canvas
+    # The raw textarea answer, kept separately so the UI can restore it after a reload or a failed grading run.
+    submitted_answer: Mapped[str] = mapped_column(Text, default="")
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     feedback: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

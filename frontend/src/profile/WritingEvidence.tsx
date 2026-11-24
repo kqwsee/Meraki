@@ -62,7 +62,7 @@ export default function WritingEvidence({ data }: { data: WritingEvidenceT }) {
         <span className="small muted">новые сверху</span>
       </div>
       <p className="small muted">
-        Здесь видно, где именно проявился твой способ писать и думать: темп, паузы, правки, вставки и удаления.
+        Здесь видно, где именно проявился твой способ писать и думать: темп, паузы и правки.
         Новое сообщение появляется на этой странице через пару секунд после отправки.
       </p>
       {data.traits.length > 0 && (

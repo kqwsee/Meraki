@@ -590,6 +590,7 @@ label.field, div.field { display: flex; flex-direction: column; gap: 7px; font-s
 }
 .mem-node.course text { font-size: 13px; fill: var(--text-strong); font-weight: 600; opacity: 1; }
 .mem-labels-visible .mem-node text, .mem-node:hover text, .mem-node:focus-visible text { opacity: 1; }
+.mem-node:focus { outline: none; }
 .mem-node:focus-visible circle { stroke: var(--accent-2); stroke-width: 3; }
 /* "what influenced this section" explainer at the top of a section modal */
 .section-factors {

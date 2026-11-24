@@ -47,7 +47,7 @@ export function DraftCompare({ revision }: { revision: { kind: string; before: s
   return (
     <>
       <div className="small muted mt">
-        {isDelete ? "Черновик: что было и что осталось после удаления" : "Черновик: что было и что стало после вставки"}
+        {isDelete ? "Черновик: что было и что осталось после удаления" : "Черновик: что было и что стало после правки"}
         {revision.kind ? ` (${REVISION_LABELS[revision.kind] ?? revision.kind})` : ""}
       </div>
       <div className="draft-compare">

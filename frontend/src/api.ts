@@ -83,6 +83,25 @@ export const api = {
   patch: <T = any>(url: string, body?: unknown) =>
     fetch(`/api${url}`, { method: "PATCH", headers: headers(), body: JSON.stringify(body ?? {}) }).then((r) => handle<T>(r)),
   del: <T = any>(url: string) => fetch(`/api${url}`, { method: "DELETE", headers: headers(false) }).then((r) => handle<T>(r)),
+  /** Fetch a file attachment (e.g. the Obsidian export) and save it under the name the server sent. */
+  download: async (url: string, fallbackName: string) => {
+    const res = await fetch(`/api${url}`, { headers: headers(false), cache: "no-store" });
+    if (!res.ok) {
+      await handle(res);
+      return;
+    }
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const match = /filename\*?=(?:UTF-8'')?["']?([^"';]+)/i.exec(disposition);
+    const name = match ? decodeURIComponent(match[1]) : fallbackName;
+    const href = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 0);
+  },
   upload: <T = any>(url: string, form: FormData) =>
     fetch(`/api${url}`, { method: "POST", headers: headers(false), body: form }).then((r) => handle<T>(r)),
   /** POST with keepalive: survives page unload (telemetry, session end). */

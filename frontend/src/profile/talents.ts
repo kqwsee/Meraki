@@ -97,7 +97,7 @@ export const REVISION_LABELS: Record<string, string> = {
   paste: "вставка",
   delete: "удаление",
   drop: "перетаскивание",
-  insert: "вставка",
+  insert: "правка",
 };
 
 /** "…" + the tail of the unchanged prefix, the changed middle, and the head of the suffix. */
