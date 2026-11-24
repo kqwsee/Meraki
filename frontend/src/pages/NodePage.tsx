@@ -341,6 +341,18 @@ function ExamStage({ st, id, onReload, onJob, onPractice }: {
     tracker.setContext({ nodeId: id, stage: "exam", taskId: activeTask, attemptId: ex?.status === "in_progress" ? ex.id : null });
   }, [id, activeTask, ex?.id, ex?.status]);
 
+  // Keep the draft while the attempt is in_progress: a failed grading run leaves it there
+  // so the learner can resubmit. Once grading succeeds, the answers live on the server.
+  useEffect(() => {
+    if (ex && ex.status !== "in_progress") {
+      try {
+        localStorage.removeItem(`meraki_exam_${ex.id}`);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [ex?.id, ex?.status]);
+
   if (runningJob && JOB_TEXT[runningJob]) return <Loading text={JOB_TEXT[runningJob]} />;
   if (!ex) {
     return (
@@ -419,7 +431,10 @@ function ResultView({ st, ex, id, onJob, onPractice }: {
           <h2 style={{ margin: 0 }}>{passed ? "Тема сдана" : "Пока не сдано"}</h2>
           <div className="small muted">
             Порог {st.pass_score}. Баллы за задания: {Math.round(ex.raw_score ?? 0)}
-            {ex.understanding != null && <> · понимание при защите решения: {Math.round(ex.understanding * 100)}%</>}
+            {ex.understanding != null && (
+              <> · защита решения: {Math.round(ex.understanding * 100)}% (множитель ×{(0.6 + 0.4 * ex.understanding).toFixed(2)})</>
+            )}
+            {" "}· итог: {Math.round(ex.score ?? 0)} из 100
           </div>
           {ex.weak_concepts.length > 0 && (
             <div className="row mt" style={{ gap: 4 }}>
@@ -429,6 +444,12 @@ function ResultView({ st, ex, id, onJob, onPractice }: {
           )}
         </div>
       </div>
+      {ex.understanding != null && (ex.raw_score ?? 0) >= st.pass_score && (ex.score ?? 0) < st.pass_score && (
+        <div className="alert warning">
+          За задания набрано {Math.round(ex.raw_score ?? 0)} — это выше порога. Ниже порога итог опустила защита решения:
+          ответы на уточняющие вопросы были неполными.
+        </div>
+      )}
       {ex.summary && <div className="card"><Markdown>{ex.summary}</Markdown></div>}
       {passed ? (
         <div className="alert success">Наставник обновляет твой профиль и перестраивает маршрут по курсу с учётом этой темы.</div>

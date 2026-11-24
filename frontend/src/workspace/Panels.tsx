@@ -10,6 +10,8 @@ export type TaskT = {
   id: number; title: string; statement: string; kind: string; language: string; concept: string; bloom: string; scaffold: string;
   starter_files: string[]; /** course/topic/stage/task folder in the workspace */ folder: string;
   status: string; score: number | null; feedback: string; hints: string[]; confidence: number | null;
+  /** Raw textarea answer saved on the server, restored after a reload or a failed grading run. */
+  submitted_answer?: string;
   from_author?: boolean;
 };
 
@@ -106,7 +108,11 @@ export function PracticePanel({ tasks, generating, onReload, onMore, onActive }:
   const ws = useWorkspace()!;
   const [activeId, setActiveId] = useState<number | null>(tasks[0]?.id ?? null);
   const task = tasks.find((t) => t.id === activeId) ?? tasks[0];
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answers, setAnswers] = useState<Record<number, string>>(() => {
+    const restored: Record<number, string> = {};
+    for (const t of tasks) if (t.submitted_answer) restored[t.id] = t.submitted_answer;
+    return restored;
+  });
   const [hintsShown, setHintsShown] = useState<Record<number, number>>({});
   const [confidence, setConfidence] = useState<Record<number, number>>({});
   const [busy, setBusy] = useState(false);
@@ -126,6 +132,21 @@ export function PracticePanel({ tasks, generating, onReload, onMore, onActive }:
     if (tasks.length) ws.refreshFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks.length]);
+
+  // Restore answers saved on the server (tasks may arrive after the first render).
+  useEffect(() => {
+    setAnswers((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const t of tasks) {
+        if (t.submitted_answer && !next[t.id]) {
+          next[t.id] = t.submitted_answer;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [tasks]);
 
   if (!tasks.length) {
     return (
@@ -236,14 +257,26 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
   const ws = useWorkspace()!;
   const draftKey = `meraki_exam_${attempt.id}`;
   const [answers, setAnswers] = useState<Record<number, string>>(() => {
+    let draft: Record<number, string> = {};
     try {
-      return JSON.parse(localStorage.getItem(draftKey) ?? "{}");
+      const parsed = JSON.parse(localStorage.getItem(draftKey) ?? "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) draft = parsed;
     } catch {
-      return {};
+      draft = {};
     }
+    // The server keeps the answers. A reload after a failed grading run must not show empty
+    // fields: those empty fields would be sent again and overwrite the saved answers.
+    const restored: Record<number, string> = {};
+    for (const t of attempt.tasks) {
+      if (t.submitted_answer && !draft[t.id]) restored[t.id] = t.submitted_answer;
+    }
+    return { ...restored, ...draft };
   });
   const [activeId, setActiveId] = useState(attempt.tasks[0]?.id);
   const task = attempt.tasks.find((t) => t.id === activeId) ?? attempt.tasks[0];
+  const taskRoot = task?.folder || (task?.starter_files[0] ? task.starter_files[0].split("/").slice(0, -1).join("/") : "");
+  const taskPrefix = taskRoot ? taskRoot.replace(/\/+$/, "") + "/" : "";
+  const activeOutside = ws.activePath && taskPrefix && !ws.activePath.startsWith(taskPrefix) ? ws.activePath : null;
   const deadline = new Date(attempt.started_at).getTime() + attempt.time_limit_min * 60000;
   const [left, setLeft] = useState(() => Math.max(0, deadline - Date.now()));
   const [busy, setBusy] = useState(false);
@@ -257,6 +290,14 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
 
   useEffect(() => {
     onActive(task?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
+
+  // Tabs stay open across tasks, so switching a task used to leave the previous task's file
+  // active and edits could land in the wrong file. Open this task's starter file instead.
+  useEffect(() => {
+    const first = task?.starter_files[0];
+    if (first && taskPrefix && !(ws.activePath ?? "").startsWith(taskPrefix)) ws.openFile(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id]);
 
@@ -308,11 +349,9 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
       tracker.log("exam_submit", `attempt:${attempt.id}`, { auto });
       await tracker.flush(); // flags must reach the server before grading reads them
       await api.post(`/exams/${attempt.id}/submit`, { answers: payload });
-      try {
-        localStorage.removeItem(draftKey);
-      } catch {
-        /* ignore */
-      }
+      // Keep the draft: the POST only starts a background grading job. If that job fails,
+      // the learner must be able to resubmit without retyping. The draft is removed once
+      // the attempt leaves "in_progress" (see ExamStage).
       onSubmitted();
     } catch (e: any) {
       setError(e.message);
@@ -355,6 +394,11 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
               </div>
             )}
             {lock && <div className="alert warning mt lock-banner"><Icon name="lock" /> {lock}</div>}
+            {activeOutside && (
+              <div className="alert warning mt">
+                Открыт файл другого задания: <code>{activeOutside.split("/").pop()}</code>. Открой файл текущего задания кнопкой 📄 — иначе правки не попадут в ответ.
+              </div>
+            )}
             <label className="field mt">
               Ответ
               <textarea rows={5} value={answers[task.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [task.id]: e.target.value }))} {...handlers} />

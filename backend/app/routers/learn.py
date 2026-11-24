@@ -87,6 +87,24 @@ def _msg_json(m: Message) -> dict[str, Any]:
     return {"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
 
 
+def _shown_attempt(attempts: list[ExamAttempt], completed: bool) -> ExamAttempt | None:
+    """The attempt whose result the node page should show.
+
+    An active attempt always wins: the learner has to finish it. Once the topic is completed,
+    a later failed retake must not hide the earlier passing result.
+    """
+    if not attempts:
+        return None
+    latest = attempts[0]  # attempts are ordered newest first
+    if latest.status != "finished":
+        return latest
+    if completed and (latest.score or 0) < learning.PASS_SCORE:
+        passing = [a for a in attempts if a.status == "finished" and (a.score or 0) >= learning.PASS_SCORE]
+        if passing:
+            return max(passing, key=lambda a: ((a.score or 0), a.id))
+    return latest
+
+
 def _attempt_json(db: Session, a: ExamAttempt) -> dict[str, Any]:
     tasks = db.scalars(select(Task).where(Task.attempt_id == a.id).order_by(Task.id)).all()
     finished = a.status == "finished"
@@ -118,9 +136,10 @@ def node_state(node_id: int, user: User = Depends(current_user), db: Session = D
     attempts = db.scalars(
         select(ExamAttempt).where(ExamAttempt.user_id == user.id, ExamAttempt.node_id == node_id).order_by(ExamAttempt.id.desc())
     ).all()
+    # Keep a failed job visible across reloads: the learner needs to know why grading stopped.
+    # The next job for this node overwrites it (see _run_job).
     job = _jobs.get((user.id, node_id))
-    if job and job.get("error"):
-        _jobs.pop((user.id, node_id), None)
+    shown = _shown_attempt(attempts, progress.completed)
     return {
         "node": {"id": node.id, "title": node.title, "summary": node.summary, "objectives": node.objectives, "concepts": node.concepts,
                  "mode": route.node_mode(db, user.id, node), "personal": node.owner_user_id is not None, "kind": node.kind,
@@ -135,8 +154,8 @@ def node_state(node_id: int, user: User = Depends(current_user), db: Session = D
         },
         "messages": {s: [_msg_json(m) for m in ctx.stage_messages(db, user.id, node_id, s)] for s in ("prologue", "lecture", "practice")},
         "practice_tasks": learning.tasks_json(list(practice)),
-        "exam": _attempt_json(db, attempts[0]) if attempts else None,
-        "exam_history": [{"id": a.id, "score": a.score, "status": a.status} for a in attempts[1:]],
+        "exam": _attempt_json(db, shown) if shown else None,
+        "exam_history": [{"id": a.id, "score": a.score, "status": a.status} for a in attempts if shown is None or a.id != shown.id],
         "job": job,
         "pass_score": learning.PASS_SCORE,
     }  # fmt: skip

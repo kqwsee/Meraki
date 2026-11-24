@@ -505,7 +505,7 @@ def _writing_notes(chars: int, pauses: int, backspaces: int, cpm: int | None, ba
         elif backspaces * 100 / chars >= 8:
             notes.append(f"{backspaces} удалений на {chars} знаков — переформулирует по ходу письма.")
     if has_revisions:
-        notes.append("В черновике были вставки или удаления — ниже видно, что было и что стало.")
+        notes.append("В черновике были правки — ниже видно, что было и что стало.")
     return notes
 
 

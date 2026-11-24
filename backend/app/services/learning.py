@@ -435,6 +435,7 @@ async def check_practice(user_id: int, task_id: int, answer: str, files: list[di
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         assert task
+        task.submitted_answer = answer
         task.answer = render_submission(answer, files, canvas)
         task.score = max(0.0, min(100.0, float(result.get("score", 0))))
         task.feedback = str(result.get("feedback", ""))
@@ -598,27 +599,74 @@ async def submit_exam(user_id: int, attempt_id: int, answers: dict[str, dict[str
     with SessionLocal() as db:
         attempt = db.get(ExamAttempt, attempt_id)
         assert attempt and attempt.user_id == user_id and attempt.status == "in_progress"
+        tasks = db.scalars(select(Task).where(Task.attempt_id == attempt_id).order_by(Task.id)).all()
+        for t in tasks:
+            a = answers.get(str(t.id)) or {}
+            raw = str(a.get("answer", ""))
+            # A client that lost its draft after a failed grading run may retry with empty
+            # fields. Do not erase an answer that is already saved on the server.
+            if not raw.strip() and t.submitted_answer.strip():
+                raw = t.submitted_answer
+            t.submitted_answer = raw
+            t.answer = render_submission(raw, a.get("files") or [], str(a.get("canvas", "")))
+        db.commit()  # answers are saved even if grading fails, so a retry can resubmit them
+    await _grade_saved_attempt(attempt_id, regenerate_verification=True)
+
+
+async def regrade_exam(attempt_id: int, *, keep_defence: bool | None = None) -> None:
+    """Re-run grading from the answers already saved on the attempt.
+
+    Used to repair an attempt whose first grading run failed: the answers stay in Task.answer,
+    so the learner does not have to retake the exam. When the learner has already passed the
+    defence (understanding is stored), those answers and their multiplier are reused instead
+    of asking the verification questions again.
+    """
+    with SessionLocal() as db:
+        attempt = db.get(ExamAttempt, attempt_id)
+        assert attempt
+        if keep_defence is None:
+            keep_defence = attempt.understanding is not None
+        if not keep_defence:
+            attempt.verification = []
+            attempt.understanding = None
+        attempt.status = "in_progress"
+        attempt.finished_at = None
+        attempt.raw_score = None
+        attempt.score = None
+        attempt.weak_concepts = []
+        # Keep attempt.summary: _grade_saved_attempt carries its defence paragraph over.
+        db.commit()
+    await _grade_saved_attempt(attempt_id, regenerate_verification=not keep_defence)
+
+
+async def _grade_saved_attempt(attempt_id: int, *, regenerate_verification: bool) -> None:
+    """Grade the answers already stored on the attempt's tasks and update its state."""
+    with SessionLocal() as db:
+        attempt = db.get(ExamAttempt, attempt_id)
+        assert attempt
         node = db.get(GraphNode, attempt.node_id)
         assert node
         tasks = db.scalars(select(Task).where(Task.attempt_id == attempt_id).order_by(Task.id)).all()
-        blocks = []
-        for t in tasks:
-            a = answers.get(str(t.id)) or {}
-            t.answer = render_submission(str(a.get("answer", "")), a.get("files") or [], str(a.get("canvas", "")))
-            blocks.append(
-                f"### task_id={t.id}: «{t.title}» ({t.kind} {t.language})\n{t.statement}\nКритерии: {t.rubric}\n"
-                f"Эталон: {t.solution or '—'}\n\n{t.answer}"
-            )
-        db.commit()  # answers are saved even if grading fails, so a retry can resubmit them
+        blocks = [
+            f"### task_id={t.id}: «{t.title}» ({t.kind} {t.language})\n{t.statement}\nКритерии: {t.rubric}\n"
+            f"Эталон: {t.solution or '—'}\n\n{t.answer}"
+            for t in tasks
+        ]
         prompt = ctx.join_blocks(ctx.node_block(db, node), "## Экзаменационные задания и ответы\n\n" + "\n\n".join(blocks))
         fragments = [f for f in integrity.flags_for_attempt(db, attempt_id) if f.fragment.strip()]
         fragments_text = "\n\n".join(f"flag_id={f.id} ({f.kind}, {f.target}):\n```\n{f.fragment[:1500]}\n```" for f in fragments[:6])
         node_block = ctx.node_block(db, node)
         task_ids = {t.id for t in tasks}
+        previous_summary = attempt.summary or ""
+
+    defence_note = ""
+    marker = "**Проверка понимания:**"
+    if not regenerate_verification and marker in previous_summary:
+        defence_note = previous_summary.split(marker, 1)[1].strip()
 
     llm = get_llm()
     grade_task = _grade_exam(llm, prompt, task_ids)
-    if fragments:
+    if fragments and regenerate_verification:
         q_prompt = ctx.join_blocks(node_block, "## Помеченные фрагменты\n" + fragments_text, "## Контекст решений\n" + prompt[-12000:])
         (scores_by_task, grade), questions = await asyncio.gather(
             grade_task, llm.complete_json(system=VERIFY_QUESTIONS_SYSTEM, prompt=q_prompt, schema=VERIFY_QUESTIONS_SCHEMA, tier="fast")
@@ -646,21 +694,36 @@ async def submit_exam(user_id: int, attempt_id: int, answers: dict[str, dict[str
         attempt.raw_score = round(sum(scores) / max(len(scores), 1), 1)
         attempt.summary = str(grade.get("overall_comment", ""))
         attempt.weak_concepts = [str(c) for c in grade.get("weak_concepts", [])][:8]
-        valid_ids = {f.id for f in fragments}
-        frag_by_id = {f.id: f for f in fragments}
-        attempt.verification = [
-            {"flag_id": int(q["flag_id"]), "question": q["question"], "fragment": frag_by_id[int(q["flag_id"])].fragment[:1500],
-             "kind": frag_by_id[int(q["flag_id"])].kind, "answer": None, "understood": None, "comment": ""}
-            for q in questions.get("questions", []) if int(q.get("flag_id", 0)) in valid_ids
-        ]  # fmt: skip
-        if attempt.verification:
+        if regenerate_verification:
+            valid_ids = {f.id for f in fragments}
+            frag_by_id = {f.id: f for f in fragments}
+            attempt.verification = [
+                {"flag_id": int(q["flag_id"]), "question": q["question"], "fragment": frag_by_id[int(q["flag_id"])].fragment[:1500],
+                 "kind": frag_by_id[int(q["flag_id"])].kind, "answer": None, "understood": None, "comment": ""}
+                for q in questions.get("questions", []) if int(q.get("flag_id", 0)) in valid_ids
+            ]  # fmt: skip
+            if attempt.verification:
+                attempt.status = "verifying"
+                db.commit()
+                return
+            attempt.score = attempt.raw_score
+            attempt.status = "finished"
+        elif attempt.understanding is not None:
+            # The defence was already completed; reuse its score instead of asking again.
+            attempt.score = round((attempt.raw_score or 0) * (0.6 + 0.4 * attempt.understanding), 1)
+            attempt.status = "finished"
+        elif attempt.verification:
             attempt.status = "verifying"
-            db.commit()
-            return
-        attempt.score = attempt.raw_score
-        attempt.status = "finished"
+        else:
+            attempt.score = attempt.raw_score
+            attempt.status = "finished"
+        if defence_note:
+            attempt.summary = (attempt.summary + "\n\n" + marker + " " + defence_note).strip()
+        finished = attempt.status == "finished"
+        user_id = attempt.user_id
         db.commit()
-    await _finalize_exam(user_id, attempt_id)
+    if finished:
+        await _finalize_exam(user_id, attempt_id)
 
 
 async def verify_exam(user_id: int, attempt_id: int, answers: dict[str, str]) -> None:
@@ -750,6 +813,7 @@ def tasks_json(tasks: list[Task], reveal_hints: bool = True) -> list[dict[str, A
             "starter_files": [f.get("path") for f in t.starter_files], "folder": t.workspace_folder or "",
             "status": t.status, "from_author": t.excerpt_id is not None,
             "score": t.score, "feedback": t.feedback, "hints": t.hints if reveal_hints else [],
+            "submitted_answer": t.submitted_answer or "",
         }  # fmt: skip
         for t in tasks
     ]

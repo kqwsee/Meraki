@@ -37,6 +37,7 @@ export default function Profile() {
   const refreshTimer = useRef<number>();
   const [edit, setEdit] = useState<Partial<Note> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Note | null>(null);
   const [section, setSection] = useState<ProfileSection | null>(null);
@@ -119,6 +120,20 @@ export default function Profile() {
     }
   }
 
+  /** Notes as an Obsidian vault: the server builds a zip of markdown files whose [[links]] keep the
+   * note → course/topic connections, so the graph view there matches Meraki's knowledge map. */
+  async function exportNotes() {
+    setExporting(true);
+    setError(null);
+    try {
+      await api.download("/notes/export", "meraki-obsidian.zip");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось экспортировать заметки");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (!p) return error ? <ErrorBox error={error} /> : <Loading text="Загружаем профиль" />;
   const initials = p.user.name.trim().split(/\s+/).slice(0, 2).map((word) => Array.from(word)[0]).join("").toLocaleUpperCase("ru");
   const memory = p.memory;
@@ -143,11 +158,6 @@ export default function Profile() {
       </header>
 
       <ErrorBox error={error} />
-      <dl className="profile-metrics" aria-label="Учебные показатели">
-        <div><dt>Курсы</dt><dd>{p.courses.length}</dd></div>
-        <div><dt>К повторению</dt><dd>{p.reviews.due}</dd></div>
-        <div><dt>Заметки</dt><dd>{notes.length}</dd></div>
-      </dl>
 
       <div className="profile-overview">
         <section className="card profile-panel profile-map" aria-labelledby="profile-map-title">
@@ -189,7 +199,13 @@ export default function Profile() {
       <section className="card profile-panel" aria-labelledby="profile-notes-title">
         <header className="profile-panel-head">
           <h2 id="profile-notes-title">Заметки</h2>
-          <button className="btn sm" onClick={() => openEditor({ title: "", content: "" })}><Icon name="plus" /> Заметка</button>
+          <div className="row">
+            <button className="btn sm" onClick={exportNotes} disabled={exporting || notes.length === 0}
+              title="Скачать все заметки как хранилище Obsidian со связями">
+              {exporting ? <><span className="spinner" /> Экспорт</> : <><Icon name="download" /> Экспорт</>}
+            </button>
+            <button className="btn sm" onClick={() => openEditor({ title: "", content: "" })}><Icon name="plus" /> Заметка</button>
+          </div>
         </header>
         {notes.length ? (
           <div className="profile-note-list">

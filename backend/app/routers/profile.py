@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,7 +10,7 @@ from ..background import spawn
 from ..db import get_db
 from ..models import Enrollment, Event, GraphNode, MemoryEntry, Note, ReviewCard, User
 from ..security import current_user
-from ..services import integrity, reviews, talents
+from ..services import integrity, obsidian, reviews, talents
 from ..services.context import MIND_AXES, course_progress
 from ..services.profile import update_profile
 
@@ -122,6 +124,18 @@ def talent_detail(talent: str, user: User = Depends(current_user), db: Session =
 def writing_evidence(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Concrete learner messages with typing metrics for the "how you write and think" section."""
     return talents.writing_evidence(db, user)
+
+
+@router.get("/notes/export")
+def export_notes(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """All notes as an Obsidian vault: markdown files with [[links]] to their course and topic,
+    so the exported notes show the same connections the profile knowledge map does."""
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return Response(
+        content=obsidian.export_vault(db, user),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="meraki-obsidian-{stamp}.zip"'},
+    )
 
 
 @router.get("/notes")

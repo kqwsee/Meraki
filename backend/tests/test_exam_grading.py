@@ -6,6 +6,7 @@ contract and the repair fallback.
 """
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import create_engine
@@ -21,6 +22,7 @@ from app.prompts import (
     EXAM_GRADE_SYSTEM,
     EXAM_TASKS_SYSTEM,
 )
+from app.routers.learn import _shown_attempt
 from app.services import learning
 
 
@@ -191,14 +193,17 @@ class SubmitExamIntegrationTest(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         self.engine.dispose()
 
-    async def _submit(self, llm):
-        answers = {str(task_id): {"answer": "решение"} for task_id in self.task_ids}
+    async def _submit_with(self, llm, answers):
         with (
             patch.object(learning, "SessionLocal", self.Session),
             patch.object(learning, "get_llm", return_value=llm),
             patch.object(learning, "_finalize_exam", new=AsyncMock()),
         ):
             await learning.submit_exam(self.user_id, self.attempt_id, answers)
+
+    async def _submit(self, llm):
+        answers = {str(task_id): {"answer": "решение"} for task_id in self.task_ids}
+        await self._submit_with(llm, answers)
 
     async def test_points_answer_is_not_averaged_as_percentages(self):
         """The old bug: (7+10+10)/3 = 9. Now 7/7, 10/10, 10/10 = 100."""
@@ -238,6 +243,74 @@ class SubmitExamIntegrationTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(attempt.finished_at)
             self.assertIsNone(attempt.raw_score)
             self.assertIsNone(attempt.score)
+
+    async def test_empty_resubmission_does_not_erase_saved_answer(self):
+        """A client that lost its draft may retry with empty fields; keep the saved answer."""
+        bad = grade((self.task_ids[0], {"score": 7, "feedback": "no points"}))
+        first_answers = {str(task_id): {"answer": "полный ответ"} for task_id in self.task_ids}
+        with self.assertRaises(learning.GradingContractError):
+            await self._submit_with(FakeLLM(bad, bad), first_answers)
+
+        full = grade(*[(task_id, {"points": 1, "max_points": 1, "feedback": "ok"}) for task_id in self.task_ids])
+        llm = FakeLLM(full)
+        await self._submit_with(llm, {str(task_id): {"answer": ""} for task_id in self.task_ids})
+
+        self.assertIn("полный ответ", llm.calls[0]["prompt"])
+        with self.Session() as db:
+            tasks = [db.get(Task, task_id) for task_id in self.task_ids]
+            self.assertEqual([t.submitted_answer for t in tasks], ["полный ответ"] * 3)
+            self.assertEqual(learning.tasks_json(tasks)[0]["submitted_answer"], "полный ответ")
+
+    async def test_regrade_uses_saved_answers_and_keeps_completed_defence(self):
+        """Repair path: no retake, no second defence; the old understanding still applies."""
+        half = grade(*[(task_id, {"points": 1, "max_points": 2, "feedback": "half"}) for task_id in self.task_ids])
+        await self._submit(FakeLLM(half))
+        with self.Session() as db:
+            attempt = db.get(ExamAttempt, self.attempt_id)
+            attempt.understanding = 0.5
+            attempt.verification = [
+                {"flag_id": 1, "question": "q", "fragment": "f", "kind": "paste", "answer": "a", "understood": True, "comment": ""}
+            ]
+            attempt.summary = "Старый итог\n\n**Проверка понимания:** зачтено"
+            db.commit()
+
+        full = grade(*[(task_id, {"points": 1, "max_points": 1, "feedback": "ok"}) for task_id in self.task_ids])
+        llm = FakeLLM(full)
+        with (
+            patch.object(learning, "SessionLocal", self.Session),
+            patch.object(learning, "get_llm", return_value=llm),
+            patch.object(learning, "_finalize_exam", new=AsyncMock()),
+        ):
+            await learning.regrade_exam(self.attempt_id)
+
+        with self.Session() as db:
+            attempt = db.get(ExamAttempt, self.attempt_id)
+            self.assertEqual(attempt.status, "finished")
+            self.assertEqual(attempt.raw_score, 100.0)
+            self.assertEqual(attempt.score, 80.0)  # 100 * (0.6 + 0.4 * 0.5)
+            self.assertIn("Проверка понимания", attempt.summary)
+            self.assertIn("зачтено", attempt.summary)
+
+
+class ShownAttemptTest(unittest.TestCase):
+    def test_failed_retake_does_not_hide_earlier_pass(self):
+        passed = SimpleNamespace(id=20, status="finished", score=68.0)
+        failed = SimpleNamespace(id=21, status="finished", score=21.7)
+        self.assertIs(_shown_attempt([failed, passed], True), passed)
+        self.assertIs(_shown_attempt([failed, passed], False), failed)
+
+    def test_active_attempt_always_wins(self):
+        passed = SimpleNamespace(id=20, status="finished", score=68.0)
+        failed = SimpleNamespace(id=21, status="finished", score=21.7)
+        active = SimpleNamespace(id=22, status="in_progress", score=None)
+        verifying = SimpleNamespace(id=23, status="verifying", score=None)
+        self.assertIs(_shown_attempt([active, failed, passed], True), active)
+        self.assertIs(_shown_attempt([verifying, failed, passed], True), verifying)
+
+    def test_best_passing_attempt_is_shown(self):
+        better = SimpleNamespace(id=21, status="finished", score=80.0)
+        worse = SimpleNamespace(id=22, status="finished", score=21.7)
+        self.assertIs(_shown_attempt([worse, better], True), better)
 
 
 if __name__ == "__main__":

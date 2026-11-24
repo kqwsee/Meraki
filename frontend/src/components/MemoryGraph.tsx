@@ -168,6 +168,9 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
 
   function startDrag(n: SimNode, e: ReactPointerEvent<SVGGElement>) {
     e.stopPropagation();
+    // Don't let the pointer focus the node: the focused state draws a ring around the circle, which
+    // framed every node you grabbed. Tab still focuses nodes (and shows the ring) for keyboard users.
+    e.preventDefault();
     const svg = e.currentTarget.ownerSVGElement;
     const sim = simRef.current;
     if (!svg || !sim) return;
