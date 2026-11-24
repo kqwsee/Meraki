@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -90,7 +91,7 @@ export default function TalentDetailPage() {
         <div style={{ flex: 1, minWidth: 280 }}>
           <Link className="small muted" to="/profile/talents">← Все таланты</Link>
           <div className="row mt" style={{ gap: 14 }}>
-            <span className="talent-card-icon" style={{ width: 56, height: 56, fontSize: 30 }} aria-hidden="true">{t.icon}</span>
+            <span className="talent-card-icon" style={{ width: 56, height: 56, fontSize: 30 }} aria-hidden="true"><Icon name={t.icon} /></span>
             <div>
               <h1 style={{ margin: 0 }}>{t.title}</h1>
               <div className="small muted">{t.label} талант</div>

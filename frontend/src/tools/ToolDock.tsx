@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { Suspense, useMemo, useRef, useState } from "react";
 import { tracker } from "../telemetry/tracker";
 import { useWorkspace } from "../workspace/context";
@@ -105,7 +106,7 @@ export default function ToolDock({ tools, domain, courseId, nodeId, onAddToCanva
       onPointerCancel={endDrag}
       title="Клик — развернуть здесь, перетаскивание — положить на холст"
     >
-      <span className="ico">{t.icon}</span>
+      <span className="ico"><Icon name={t.icon} /></span>
       <span style={{ flex: 1 }}>{t.name}</span>
       {t.custom && <span className="badge accent" title="Инструмент от автора курса">автор</span>}
       <button className="icon-btn" title="Положить на холст"
@@ -132,7 +133,7 @@ export default function ToolDock({ tools, domain, courseId, nodeId, onAddToCanva
 
   return (
     <>
-      <div className="ws-section-title" style={{ padding: "12px 14px 0" }}>🧰 Инструменты</div>
+      <div className="ws-section-title" style={{ padding: "12px 14px 0" }}>Инструменты</div>
       <div className="ws-scroll" style={{ padding: "8px 12px" }}>
         <div className="tool-list">{course.map(card)}</div>
       </div>
@@ -147,18 +148,18 @@ export default function ToolDock({ tools, domain, courseId, nodeId, onAddToCanva
                   tracker.log("tool_open", t.id, { via: "search" });
                   setQuery("");
                 }}>
-                <span className="ico">{t.icon}</span>
+                <span className="ico"><Icon name={t.icon} /></span>
                 <span style={{ flex: 1 }}>{t.name}</span>
                 {course.some((c) => c.id === t.id) ? <span className="badge">есть</span> : <span className="badge accent">+ добавить</span>}
               </div>
             ))}
           </div>
         )}
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Найти среди всех инструментов…" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти инструмент" aria-label="Найти инструмент" />
       </div>
       {ghost && catalog.byId[ghost.toolId] && (
         <div className="tool-ghost" style={{ left: ghost.x + 12, top: ghost.y + 10 }}>
-          <span className="ico">{catalog.byId[ghost.toolId].icon}</span> {catalog.byId[ghost.toolId].name}
+          <span className="ico"><Icon name={catalog.byId[ghost.toolId].icon} /></span> {catalog.byId[ghost.toolId].name}
         </div>
       )}
     </>

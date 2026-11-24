@@ -1,6 +1,8 @@
 import type { FormulaSpec } from "../tools/formula";
 import type { CustomToolDto } from "../tools/custom";
 
+import { iconName, type IconName } from "../components/Icon";
+
 export type ToolKind = "formula" | "html";
 
 /** What the builder edits before it is saved. */
@@ -22,14 +24,14 @@ export const DEFAULT_HEIGHT = 360;
 
 export function blankDraft(kind: ToolKind): Draft {
   return {
-    name: "", icon: kind === "formula" ? "🧮" : "🧩", description: "", kind, spec: { inputs: [], outputs: [], notes: "" },
+    name: "", icon: kind === "formula" ? "calculator" : "puzzle", description: "", kind, spec: { inputs: [], outputs: [], notes: "" },
     code: "", height: DEFAULT_HEIGHT, origin: "manual", prompt: "", enabled: true,
   };
 }
 
 export function draftOf(t: CustomToolDto): Draft {
   return {
-    id: t.id, name: t.name, icon: t.icon, description: t.description, kind: t.kind, origin: t.origin, prompt: t.prompt, enabled: t.enabled,
+    id: t.id, name: t.name, icon: iconName(t.icon, t.kind === "formula" ? "calculator" : "puzzle"), description: t.description, kind: t.kind, origin: t.origin, prompt: t.prompt, enabled: t.enabled,
     spec: t.kind === "formula" ? { inputs: t.spec.inputs ?? [], outputs: t.spec.outputs ?? [], notes: t.spec.notes ?? "" } : { inputs: [], outputs: [], notes: "" },
     code: t.code, height: t.kind === "html" ? t.spec.height ?? DEFAULT_HEIGHT : DEFAULT_HEIGHT,
   };
@@ -37,12 +39,18 @@ export function draftOf(t: CustomToolDto): Draft {
 
 export function payloadOf(d: Draft) {
   return {
-    name: d.name.trim(), icon: d.icon, description: d.description, kind: d.kind, origin: d.origin, prompt: d.prompt, enabled: d.enabled,
+    name: d.name.trim(), icon: iconName(d.icon, d.kind === "formula" ? "calculator" : "puzzle"), description: d.description, kind: d.kind, origin: d.origin, prompt: d.prompt, enabled: d.enabled,
     spec: d.kind === "formula" ? d.spec : { height: d.height }, code: d.kind === "html" ? d.code : "",
   };
 }
 
-export const ICONS = ["🧮", "🧩", "⚡", "📐", "📏", "📈", "🔬", "🧪", "🧬", "⚗️", "🔭", "🌡️", "⚖️", "🔋", "💡", "🎲", "💰", "📊", "🗺️", "🕰️", "🎵", "🔤", "🧠", "🛠️"];
+export const TOOL_ICON_LABELS: Partial<Record<IconName, string>> = {
+  calculator: "Калькулятор", puzzle: "Головоломка", zap: "Электричество", triangle: "Треугольник",
+  ruler: "Линейка", chart: "График", microscope: "Микроскоп", flask: "Колба", dna: "ДНК",
+  telescope: "Телескоп", temperature: "Температура", scale: "Весы", bulb: "Лампочка", dice: "Кубики",
+  wallet: "Кошелёк", bars: "Диаграмма", route: "Маршрут", timer: "Таймер", music: "Музыка",
+  file: "Документ", brain: "Мышление", tools: "Инструменты", circle: "Окружность", rocket: "Движение",
+};
 
 export type Preset = { id: string; icon: string; name: string; description: string; spec: FormulaSpec };
 
@@ -51,15 +59,15 @@ const o = (key: string, label: string, unit: string, expr: string, decimals = 2)
 
 export const FORMULA_PRESETS: Preset[] = [
   {
-    id: "ohm", icon: "⚡", name: "Закон Ома", description: "Ток и мощность по напряжению и сопротивлению.",
+    id: "ohm", icon: "zap", name: "Закон Ома", description: "Ток и мощность по напряжению и сопротивлению.",
     spec: { inputs: [f("U", "Напряжение", "В", 12), f("R", "Сопротивление", "Ом", 4)], outputs: [o("I", "Сила тока", "А", "U / R", 3), o("P", "Мощность", "Вт", "U * I")], notes: "I = U / R, P = U · I" },
   },
   {
-    id: "circle", icon: "⭕", name: "Окружность", description: "Площадь и длина окружности по радиусу.",
+    id: "circle", icon: "circle", name: "Окружность", description: "Площадь и длина окружности по радиусу.",
     spec: { inputs: [f("r", "Радиус", "см", 5)], outputs: [o("S", "Площадь круга", "см²", "pi * r^2"), o("L", "Длина окружности", "см", "2 * pi * r")], notes: "" },
   },
   {
-    id: "pythagoras", icon: "📐", name: "Гипотенуза", description: "Гипотенуза, площадь и периметр прямоугольного треугольника по катетам.",
+    id: "pythagoras", icon: "triangle", name: "Гипотенуза", description: "Гипотенуза, площадь и периметр прямоугольного треугольника по катетам.",
     spec: {
       inputs: [f("a", "Катет a", "см", 3), f("b", "Катет b", "см", 4)],
       outputs: [o("c", "Гипотенуза c", "см", "sqrt(a^2 + b^2)"), o("S", "Площадь", "см²", "a * b / 2"), o("P", "Периметр", "см", "a + b + c")],
@@ -67,7 +75,7 @@ export const FORMULA_PRESETS: Preset[] = [
     },
   },
   {
-    id: "motion", icon: "🚀", name: "Равноускоренное движение", description: "Скорость и путь за время t.",
+    id: "motion", icon: "rocket", name: "Равноускоренное движение", description: "Скорость и путь за время t.",
     spec: {
       inputs: [f("v0", "Начальная скорость", "м/с", 2), f("a", "Ускорение", "м/с²", 1.5), f("t", "Время", "с", 10)],
       outputs: [o("v", "Конечная скорость", "м/с", "v0 + a * t"), o("s", "Пройденный путь", "м", "v0 * t + a * t^2 / 2")],
@@ -75,7 +83,7 @@ export const FORMULA_PRESETS: Preset[] = [
     },
   },
   {
-    id: "interest", icon: "💰", name: "Сложные проценты", description: "Сумма вклада через n лет.",
+    id: "interest", icon: "wallet", name: "Сложные проценты", description: "Сумма вклада через n лет.",
     spec: {
       inputs: [f("P", "Начальная сумма", "₽", 100000), f("p", "Ставка", "% в год", 8), f("n", "Срок", "лет", 5)],
       outputs: [o("A", "Итоговая сумма", "₽", "P * (1 + p / 100)^n"), o("gain", "Доход", "₽", "A - P")],
@@ -83,7 +91,7 @@ export const FORMULA_PRESETS: Preset[] = [
     },
   },
   {
-    id: "bmi", icon: "⚖️", name: "Индекс массы тела", description: "ИМТ по массе и росту.",
+    id: "bmi", icon: "scale", name: "Индекс массы тела", description: "ИМТ по массе и росту.",
     spec: { inputs: [f("m", "Масса", "кг", 70), f("h", "Рост", "м", 1.75)], outputs: [o("bmi", "ИМТ", "кг/м²", "m / h^2", 1)], notes: "ИМТ = масса / рост²" },
   },
 ];

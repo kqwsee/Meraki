@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import Markdown from "../components/Markdown";
@@ -8,12 +9,12 @@ import { signed, type TalentOverviewT } from "./talents";
 export type ProfileSection = "talents" | "mind" | "courses" | "writing" | "meta" | "autonomy";
 
 export const PROFILE_SECTIONS: { id: ProfileSection; title: string; icon: string }[] = [
-  { id: "talents", title: "Таланты", icon: "🏆" },
-  { id: "mind", title: "Склад ума", icon: "🧠" },
-  { id: "courses", title: "Курсы", icon: "📚" },
-  { id: "writing", title: "Как ты пишешь и думаешь", icon: "✍️" },
-  { id: "meta", title: "Метапознание и память", icon: "🎯" },
-  { id: "autonomy", title: "Самостоятельность", icon: "🧭" },
+  { id: "talents", title: "Таланты", icon: "trophy" },
+  { id: "mind", title: "Склад ума", icon: "brain" },
+  { id: "courses", title: "Курсы", icon: "book" },
+  { id: "writing", title: "Как ты пишешь и думаешь", icon: "note" },
+  { id: "meta", title: "Метапознание и память", icon: "target" },
+  { id: "autonomy", title: "Самостоятельность", icon: "compass" },
 ];
 
 export const FLAG_NAMES: Record<string, string> = {
@@ -72,7 +73,7 @@ export default function ProfileSectionBody({
               <div className="talent-mini-grid">
                 {talentOverview.talents.map((t) => (
                   <Link key={t.key} className="talent-mini" to={`/profile/talents/${t.key}`}>
-                    <span className="talent-mini-icon" aria-hidden="true">{t.icon}</span>
+                    <span className="talent-mini-icon" aria-hidden="true"><Icon name={t.icon} /></span>
                     <span className="talent-mini-body">
                       <span className="row" style={{ gap: 6 }}>
                         <b style={{ flex: 1 }}>{t.title}</b>

@@ -1,3 +1,4 @@
+import { Icon, iconName } from "../components/Icon";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { ErrorBox } from "../components/ui";
@@ -6,14 +7,14 @@ import { formulaProblems } from "../tools/formula";
 import AiPanel, { type Generated } from "./AiPanel";
 import FormulaBuilder from "./FormulaBuilder";
 import HtmlBuilder from "./HtmlBuilder";
-import { blankDraft, draftOf, FORMULA_PRESETS, ICONS, payloadOf, type Draft, type ToolKind } from "./toolDraft";
+import { blankDraft, draftOf, FORMULA_PRESETS, TOOL_ICON_LABELS, payloadOf, type Draft, type ToolKind } from "./toolDraft";
 
 export type Mode = ToolKind | "ai";
 
 const MODES: { key: Mode; label: string }[] = [
   { key: "formula", label: "∑ Формулы без кода" },
   { key: "html", label: "</> HTML и JavaScript" },
-  { key: "ai", label: "✨ ИИ по описанию" },
+  { key: "ai", label: "ИИ по описанию" },
 ];
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -56,7 +57,7 @@ export default function ToolBuilder({ courseId, tool, mode: startMode, onClose, 
     setDraft((d) => ({
       ...d, kind: g.kind, origin: "ai", prompt,
       // the author may have renamed the tool while refining: keep their name and icon then
-      name: refined && d.name.trim() ? d.name : g.name, icon: refined ? d.icon : g.icon, description: g.description || d.description,
+      name: refined && d.name.trim() ? d.name : g.name, icon: refined ? d.icon : iconName(g.icon, g.kind === "formula" ? "calculator" : "puzzle"), description: g.description || d.description,
       spec: g.kind === "formula" ? { inputs: g.spec.inputs, outputs: g.spec.outputs, notes: g.spec.notes ?? "" } : d.spec,
       code: g.kind === "html" ? g.code : d.code, height: g.kind === "html" ? g.spec?.height ?? d.height : d.height,
     }));
@@ -92,10 +93,13 @@ export default function ToolBuilder({ courseId, tool, mode: startMode, onClose, 
 
       <div className="tb-head">
         <div className="icon-pick">
-          <button type="button" className="icon-big" onClick={() => setPickIcon((v) => !v)} aria-label="Выбрать значок" aria-expanded={pickIcon}>{draft.icon}</button>
+          <button type="button" className="icon-big" onClick={() => setPickIcon((v) => !v)} aria-label="Выбрать значок" aria-expanded={pickIcon}><Icon name={draft.icon} /></button>
           {pickIcon && (
-            <div className="icon-pop" role="listbox">
-              {ICONS.map((i) => <button key={i} type="button" onClick={() => { patch({ icon: i }); setPickIcon(false); }}>{i}</button>)}
+            <div className="icon-pop" role="group" aria-label="Доступные значки">
+              {Object.entries(TOOL_ICON_LABELS).map(([name, label]) => (
+                <button key={name} type="button" title={label} aria-label={label} aria-pressed={draft.icon === name}
+                  onClick={() => { patch({ icon: name }); setPickIcon(false); }}><Icon name={name} /></button>
+              ))}
             </div>
           )}
         </div>
@@ -143,7 +147,7 @@ export default function ToolBuilder({ courseId, tool, mode: startMode, onClose, 
           </div>
           <div className="tool-card tb-card">
             <div className="tool-head" style={{ cursor: "default" }}>
-              <span className="ico">{draft.icon}</span>
+              <span className="ico"><Icon name={draft.icon} /></span>
               <span style={{ flex: 1 }}>{draft.name || "Без названия"}</span>
               <span className="badge accent">автор</span>
             </div>
@@ -164,7 +168,7 @@ export default function ToolBuilder({ courseId, tool, mode: startMode, onClose, 
             <div className="alert warning small tb-problems">
               <b>{draft.kind === "formula" ? "Нужно исправить" : "Ошибки в странице"}</b>
               <ul>{problems.map((p, i) => <li key={i}>{p}</li>)}</ul>
-              {mode !== "ai" && <div className="muted">ИИ может это исправить: вкладка «✨ ИИ по описанию».</div>}
+              {mode !== "ai" && <div className="muted">ИИ может это исправить: вкладка «ИИ по описанию».</div>}
             </div>
           )}
         </aside>

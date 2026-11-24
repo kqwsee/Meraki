@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useState } from "react";
 import { api } from "../api";
 import GraphHistory from "../components/GraphHistory";
@@ -118,7 +119,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
         {!processing && course.nodes.length === 0 && (
           <div className="choice-grid mt">
             <button className="choice" disabled={!!busy} onClick={build}>
-              <span className="ico">✨</span>
+              <span className="ico"><Icon name="graph" /></span>
               <b>Построить граф с ИИ</b>
               <span className="small muted">
                 ИИ изучит описание{course.materials.length ? ` и ${course.materials.length} материал(ов)` : ""} и предложит 4–14 тем со связями.
@@ -126,7 +127,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
               </span>
             </button>
             <button className="choice" disabled={!!busy} onClick={() => setNewNode(true)}>
-              <span className="ico">✋</span>
+              <span className="ico"><Icon name="note" /></span>
               <b>Собрать вручную</b>
               <span className="small muted">Добавьте темы сами и соедините стрелками. Тему можно создать и прямо из материала, на шаге «Обязательное».</span>
             </button>
@@ -142,7 +143,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
             <ErrorBox error={graphError} />
             <div className="row mb" style={{ gap: 8 }}>
               <button className="btn sm" disabled={!!busy} onClick={() => setHistory(true)} title="Все варианты графа: прошлые — только для просмотра">
-                🕘 История графа
+                <Icon name="history" /> История графа
               </button>
               <span className="small muted">как менялся граф</span>
             </div>
@@ -170,12 +171,12 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
                       {reqs.length > 0 && <span className="req" title={`После: ${reqs.join(", ")}`}>↳ {reqs.length}</span>}
                       <button className={`pins-chip ${mine.length ? "on" : ""}`} onClick={() => openPins(n.id)}
                         title={mine.length ? "Обязательное содержание этой темы" : "Закрепить обязательные темы и задания из материалов"}>
-                        🎯{mine.length ? ` ${mine.length}` : ""}
+                        <Icon name="target" />{mine.length ? ` ${mine.length}` : ""}
                       </button>
                       {course.route_settings.reorder && (
                         <button className={`icon-btn pin-btn ${n.pinned ? "on" : ""}`} disabled={!!busy} onClick={() => togglePin(n)}
                           title={n.pinned ? "Открепить: ИИ сможет двигать тему" : "Закрепить на этом месте: ИИ не будет её двигать"}>
-                          📌
+                          <Icon name="pin" />
                         </button>
                       )}
                       <button className="icon-btn" title="Выше" onClick={() => move(i, -1)}
@@ -187,7 +188,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
                 })}
               </div>
               <p className="small muted mt">
-                Тему нельзя поднять выше её пререквизита: сначала уберите стрелку на графе. 🎯 — обязательные фрагменты темы, 📌 — тема остаётся на своём месте в маршруте.
+                Тему нельзя поднять выше её пререквизита: сначала уберите стрелку на графе. Значок мишени открывает обязательные фрагменты темы. Булавка закрепляет тему на своём месте в маршруте.
               </p>
             </div>
             <div>
@@ -205,7 +206,7 @@ export default function TopicsStep({ course, setCourse, order, excerpts, busy, r
               </div>
               <div className="alert mt small">
                 {course.route_settings.reorder
-                  ? "Слева порядок по умолчанию. ИИ может переставлять темы под ученика, кроме закреплённых 📌: они остаются на своём месте."
+                  ? "Слева порядок по умолчанию. ИИ может переставлять темы под ученика, кроме закреплённых: они остаются на своём месте."
                   : "Порядок жёстко задан: все ученики проходят темы ровно так, как в списке слева."}
               </div>
             </div>
@@ -307,7 +308,7 @@ function NodeEditor({ node, pins, onClose, onPins, onSaved, onError }: {
         <label className="field">Ключевые понятия (через запятую)<input value={concepts} onChange={(e) => setConcepts(e.target.value)} /></label>
         <div className="alert small row" style={{ flexWrap: "nowrap" }}>
           <span style={{ flex: 1 }}>
-            🎯 Обязательное содержание:{" "}
+            <Icon name="target" /> Обязательное содержание{" "}
             {pins.length ? <b>{topics} тем, {pins.length - topics} заданий</b> : <span className="muted">пока ничего</span>}
           </span>
           <button className="btn sm" onClick={onPins}>Открыть материалы</button>

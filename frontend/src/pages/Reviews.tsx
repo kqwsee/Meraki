@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
@@ -34,10 +35,10 @@ export default function Reviews() {
   if (!card) {
     return (
       <div className="card center" style={{ maxWidth: 560, margin: "40px auto" }}>
-        <div style={{ fontSize: 48 }}>🌱</div>
+        <span className="icon-frame mb"><Icon name="check" /></span>
         <h2>{done ? `Готово! Повторено карточек: ${done}` : "Сейчас повторять нечего"}</h2>
         <p className="muted">Карточки появляются после лекций и возвращаются через растущие интервалы: 1, 2, 4, 8, 16… дней.</p>
-        <Link className="btn primary" to="/">На главную</Link>
+        <Link className="btn primary" to="/courses">К курсам</Link>
       </div>
     );
   }

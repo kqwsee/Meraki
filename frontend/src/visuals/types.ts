@@ -14,11 +14,11 @@ export type VisualDto = {
 };
 
 export const KIND_META: Record<VisualKind, { icon: string; name: string; hint: string }> = {
-  mermaid: { icon: "🔀", name: "Схема Mermaid", hint: "блок-схема, последовательность, состояния, mindmap" },
-  svg: { icon: "✏️", name: "Рисунок SVG", hint: "устройство, геометрия, эскиз" },
-  chart: { icon: "📊", name: "Диаграмма", hint: "столбцы, линии, круговая по данным" },
-  scheme: { icon: "🧩", name: "Схема-шаблон", hint: "шаги, цикл, хронология, сравнение, иерархия" },
-  html: { icon: "🎛️", name: "Интерактив", hint: "симуляция с ползунками" },
-  tool: { icon: "🧰", name: "Инструмент с примером", hint: "встроенный инструмент с готовым примером" },
-  image: { icon: "🖼️", name: "Картинка", hint: "ваша картинка с описанием" },
+  mermaid: { icon: "graph", name: "Схема Mermaid", hint: "блок-схема, последовательность, состояния, mindmap" },
+  svg: { icon: "note", name: "Рисунок SVG", hint: "устройство, геометрия, эскиз" },
+  chart: { icon: "bars", name: "Диаграмма", hint: "столбцы, линии, круговая по данным" },
+  scheme: { icon: "puzzle", name: "Схема-шаблон", hint: "шаги, цикл, хронология, сравнение, иерархия" },
+  html: { icon: "sliders", name: "Интерактив", hint: "симуляция с ползунками" },
+  tool: { icon: "tools", name: "Инструмент с примером", hint: "встроенный инструмент с готовым примером" },
+  image: { icon: "image", name: "Картинка", hint: "ваша картинка с описанием" },
 };

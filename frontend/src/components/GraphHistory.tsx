@@ -1,3 +1,4 @@
+import { Icon } from "./Icon";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { plural } from "../editor/types";
@@ -94,10 +95,10 @@ export default function GraphHistory({ courseId, onClose }: { courseId: number; 
           {route && (
             <div className="row mb" style={{ gap: 6 }}>
               <button type="button" className={`btn sm ${tab === "route" ? "primary" : "ghost"}`} onClick={() => setTab("route")}>
-                🧭 Мой маршрут
+                <Icon name="route" /> Мой маршрут
               </button>
               <button type="button" className={`btn sm ${tab === "course" ? "primary" : "ghost"}`} onClick={() => setTab("course")}>
-                🗺️ Граф курса
+                <Icon name="graph" /> Граф курса
               </button>
               <span className="spacer" />
               <span className="small muted">актуальна только новая</span>

@@ -1,5 +1,6 @@
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from "d3-force";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Icon } from "./Icon";
 
 export type GraphNodeKind = "course" | "mastered" | "fact" | "strength" | "growth" | "note";
 /** `cluster` only drives layout: nodes sharing a cluster key drift toward the same loose "cloud"
@@ -30,8 +31,7 @@ const LEGEND: { kind: GraphNodeKind; label: string }[] = [
   { kind: "note", label: "заметка" },
 ];
 
-/** Force-directed map of everything the mentor remembers about the learner — courses, mastered
- * concepts, memory facts, strengths/growth areas and notes, radiating from a center "you" node.
+/** Force-directed map of courses, mastered concepts, memory facts, strengths, growth areas and notes.
  * Nodes keep their x/y across re-renders (mutated in place by d3-force) so the graph doesn't
  * reset or jump when the underlying data refreshes. */
 export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
@@ -57,6 +57,7 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
+  const showLabels = nodes.length <= 6;
   const MIN_ZOOM = 0.35;
   const MAX_ZOOM = 3;
 
@@ -80,6 +81,7 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     const svg = svgRef.current;
     if (!svg) return;
     const onWheel = (e: WheelEvent) => {
+      if (!fill) return;
       e.preventDefault();
       const rect = svg.getBoundingClientRect();
       const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
@@ -87,7 +89,7 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, [applyZoom]);
+  }, [applyZoom, fill]);
 
   function zoomBy(factor: number) {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -125,8 +127,7 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     nodesRef.current = simNodes;
     linksRef.current = simLinks;
 
-    // each distinct cluster gets its own anchor point, arranged around the canvas, so unrelated
-    // knowledge settles into separate "clouds" instead of all drifting to one shared center
+    // Separate clusters within the canvas, using the wider axis when there are only two.
     const cx = size.w / 2;
     const cy = size.h / 2;
     const clusterIds = Array.from(new Set(simNodes.map((n) => n.cluster ?? "_misc")));
@@ -134,28 +135,36 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     if (clusterIds.length <= 1) {
       clusterIds.forEach((k) => anchor.set(k, { x: cx, y: cy }));
     } else {
-      const radius = Math.min(size.w, size.h) * 0.34;
+      const radiusX = Math.min(size.w * 0.26, size.h * 0.45);
+      const radiusY = size.h * 0.22;
+      const startAngle = clusterIds.length === 2 ? Math.PI : -Math.PI / 2;
       clusterIds.forEach((k, i) => {
-        const angle = (2 * Math.PI * i) / clusterIds.length - Math.PI / 2;
-        anchor.set(k, { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
+        const angle = startAngle + (2 * Math.PI * i) / clusterIds.length;
+        anchor.set(k, { x: cx + radiusX * Math.cos(angle), y: cy + radiusY * Math.sin(angle) });
       });
     }
     const anchorOf = (d: SimNode) => anchor.get(d.cluster ?? "_misc") ?? { x: cx, y: cy };
 
     const sim = forceSimulation(simNodes)
       .force("charge", forceManyBody().strength(-170))
-      .force("link", forceLink<SimNode, SimLink>(simLinks).distance((l) => (l.source.kind === "course" || l.target.kind === "course" ? 70 : 56)).strength(0.55))
+      .force("link", forceLink<SimNode, SimLink>(simLinks).distance((l) =>
+        l.source.kind === "course" || l.target.kind === "course" ? (showLabels ? 104 : 70) : 56,
+      ).strength(0.55))
       .force("center", forceCenter(cx, cy))
       .force("x", forceX<SimNode>((d) => anchorOf(d).x).strength(0.07))
       .force("y", forceY<SimNode>((d) => anchorOf(d).y).strength(0.07))
-      .force("collide", forceCollide<SimNode>().radius((d) => STYLE[d.kind].r + 16))
+      .force("collide", forceCollide<SimNode>().radius((d) => STYLE[d.kind].r + (showLabels ? 28 : 16)))
       .on("tick", () => bump((t) => (t + 1) % 1_000_000));
     simRef.current = sim;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      sim.stop().tick(220);
+      bump((t) => t + 1);
+    }
     return () => {
       sim.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, links, size.w, size.h]);
+  }, [nodes, links, size.w, size.h, showLabels]);
 
   function startDrag(n: SimNode, e: ReactPointerEvent<SVGGElement>) {
     e.stopPropagation();
@@ -214,33 +223,40 @@ export default function MemoryGraph({ nodes, links, onNodeClick, fill }: {
     <div className={`mem-graph ${fill ? "fill" : ""}`}>
       <div className={`mem-graph-canvas ${panning ? "panning" : ""}`} ref={hostRef} style={fill ? undefined : { height: size.h }}>
         <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${size.w} ${size.h}`} onPointerDown={startPan}>
-          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`} className={showLabels ? "mem-labels-visible" : undefined}>
             {linksRef.current.map((l, i) => (
               <line key={i} className="mem-link" x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y} />
             ))}
-            {nodesRef.current.map((n) => (
-              <g key={n.id} transform={`translate(${n.x ?? 0}, ${n.y ?? 0})`}
-                className={`mem-node ${n.kind} ${dragging === n.id ? "dragging" : ""}`}
-                onPointerDown={(e) => startDrag(n, e)}
-                onClick={() => {
-                  if (suppressClickRef.current) {
+            {nodesRef.current.map((n) => {
+              const isLink = n.kind === "course" && onNodeClick != null;
+              const focusable = isLink || fill;
+              const description = n.detail && !n.detail.startsWith(n.label) ? `${n.label}\n${n.detail}` : n.detail ?? n.label;
+              const label = !fill && n.label.length > 32 ? `${n.label.slice(0, 31).trimEnd()}…` : n.label;
+              return (
+                <g key={n.id} transform={`translate(${n.x ?? 0}, ${n.y ?? 0})`}
+                  className={`mem-node ${n.kind} ${dragging === n.id ? "dragging" : ""}`}
+                  tabIndex={focusable ? 0 : undefined}
+                  role={isLink ? "link" : focusable ? "img" : undefined}
+                  aria-label={isLink ? n.label : focusable ? description : undefined}
+                  onPointerDown={(e) => startDrag(n, e)}
+                  onKeyDown={isLink ? (e) => { if (e.key === "Enter") onNodeClick(n); } : undefined}
+                  onClick={() => {
+                    if (!suppressClickRef.current && isLink) onNodeClick(n);
                     suppressClickRef.current = false;
-                    return;
-                  }
-                  onNodeClick?.(n);
-                }}>
-                <title>{n.detail ?? n.label}</title>
-                <circle r={STYLE[n.kind].r} fill={STYLE[n.kind].fill} />
-                <text x={STYLE[n.kind].r + 5} y={4}>{n.label}</text>
-              </g>
-            ))}
+                  }}>
+                  <title>{description}</title>
+                  <circle r={STYLE[n.kind].r} fill={STYLE[n.kind].fill} />
+                  <text textAnchor="middle" y={STYLE[n.kind].r + 16}>{label}</text>
+                </g>
+              );
+            })}
           </g>
         </svg>
         <div className="mem-graph-zoom">
-          <button className="btn sm ghost" title="Отдалить" aria-label="Отдалить" onClick={() => zoomBy(1 / 1.25)}>−</button>
+          <button className="btn sm ghost" title="Отдалить" aria-label="Отдалить" onClick={() => zoomBy(1 / 1.25)}><Icon name="minus" /></button>
           <span className="small muted" title="Масштаб">{Math.round(zoom * 100)}%</span>
-          <button className="btn sm ghost" title="Приблизить" aria-label="Приблизить" onClick={() => zoomBy(1.25)}>+</button>
-          <button className="btn sm ghost" title="Сбросить вид" aria-label="Сбросить вид" onClick={resetView}>⟲</button>
+          <button className="btn sm ghost" title="Приблизить" aria-label="Приблизить" onClick={() => zoomBy(1.25)}><Icon name="plus" /></button>
+          <button className="btn sm ghost" title="Сбросить вид" aria-label="Сбросить вид" onClick={resetView}><Icon name="refresh" /></button>
         </div>
       </div>
       <div className="mem-graph-legend">

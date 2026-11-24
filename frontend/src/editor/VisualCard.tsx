@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 /**
  * One lecture visual in the course editor: the preview exactly as learners will see it, plus review actions —
  * approve, edit by hand, redo with the AI (with the author's remarks or the render error), delete.
@@ -100,7 +101,7 @@ export function VisualForm({ visual, courseId, onSaved, onCancel, onPickImage }:
           {isNew && d.kind !== "image" && (
             <label className="field">Вид
               <select value={d.kind} onChange={(e) => changeKind(e.target.value as VisualKind)}>
-                {(Object.keys(SAMPLES) as VisualKind[]).map((k) => <option key={k} value={k}>{KIND_META[k].icon} {KIND_META[k].name} — {KIND_META[k].hint}</option>)}
+                {(Object.keys(SAMPLES) as VisualKind[]).map((k) => <option key={k} value={k}>{KIND_META[k].name} — {KIND_META[k].hint}</option>)}
               </select>
             </label>
           )}
@@ -112,7 +113,7 @@ export function VisualForm({ visual, courseId, onSaved, onCancel, onPickImage }:
             <textarea rows={3} value={d.description} maxLength={2000} onChange={(e) => setD({ ...d, description: e.target.value })}
               placeholder={d.kind === "image" ? "ИИ не смотрит на картинки: он узнает о ней только из вашего описания. Опишите, что изображено и к какой мысли лекции её показать." : "Например: показать, когда объясняешь порядок проверки условия"} />
           </label>
-          {d.kind === "image" && onPickImage && <button type="button" className="btn sm" onClick={onPickImage}>🖼 Заменить картинку</button>}
+          {d.kind === "image" && onPickImage && <button type="button" className="btn sm" onClick={onPickImage}><Icon name="image" /> Заменить картинку</button>}
           {d.kind === "mermaid" && (
             <label className="field">Код Mermaid
               <textarea className="mono" rows={12} spellCheck={false} value={d.code} onChange={(e) => setD({ ...d, code: e.target.value })} />
@@ -194,7 +195,7 @@ export default function VisualCard({ visual, courseId, first, last, autoEdit, on
   return (
     <div className={`vis-card ${approved ? "approved" : "draft"}`} id={`visual-${v.id}`}>
       <div className="vis-card-head">
-        <span className="vis-kind">{meta.icon} {meta.name}</span>
+        <span className="vis-kind"><Icon name={meta.icon} /> {meta.name}</span>
         <span className={`badge ${approved ? "success" : "warning"}`}>{approved ? "✓ одобрено" : "черновик · ученики не видят"}</span>
         {v.origin === "ai" && <span className="badge" title="Подготовил ИИ">ИИ</span>}
         <span className="spacer" />
@@ -220,7 +221,7 @@ export default function VisualCard({ visual, courseId, first, last, autoEdit, on
               <span style={{ flex: 1, minWidth: 200 }}>Не отображается: {renderError}</span>
               {v.kind !== "image" && (
                 <button className="btn sm" disabled={!!busy} onClick={() => redo(`Материал не отображается, исправь ошибку: ${renderError}`)}>
-                  {busy === "redo" ? <span className="spinner" /> : "🛠 Исправить с ИИ"}
+                  {busy === "redo" ? <span className="spinner" /> : <><Icon name="tools" /> Исправить с ИИ</>}
                 </button>
               )}
             </div>

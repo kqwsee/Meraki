@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { tracker } from "../telemetry/tracker";
@@ -375,7 +376,7 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
     if (!lang) return;
     setRunning(true);
     setShowOutput(true);
-    setOutput([{ kind: "sys", text: `▶ ${active}\n` }]);
+    setOutput([{ kind: "sys", text: `Запуск: ${active}\n` }]);
     const started = performance.now();
     let errors = 0;
     const out = (k: OutKind, t: string) => {
@@ -440,11 +441,11 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
           </button>
           <button className={`ws-bar-btn ${panes.canvas ? "on" : ""}`} aria-pressed={panes.canvas} onClick={() => togglePane("canvas")}
             title={panes.canvas ? "Скрыть холст — задания займут весь экран" : "Показать холст"}>
-            🖌 Холст
+            <Icon name="palette" /> Холст
           </button>
           <button className={`ws-bar-btn ${panes.tools ? "on" : ""}`} aria-pressed={panes.tools} onClick={() => togglePane("tools")}
             title={panes.tools ? "Скрыть инструменты" : "Показать инструменты"}>
-            🧰 Инструменты
+            <Icon name="tools" /> Инструменты
           </button>
           <span className="spacer" />
           {examLeft !== null && (!panes.tasks || focus) && (
@@ -476,7 +477,7 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
                 <div className="ws-filetree" style={{ borderTop: "1px solid var(--border)" }}>
                   <button className="ws-filetree-head" onClick={toggleFiles} aria-expanded={filesOpen}>
                     <span className={`chev ${filesOpen ? "open" : ""}`}>▸</span>
-                    <span className="ws-section-title" style={{ margin: 0 }}>🗂 Пространство</span>
+                    <span className="ws-section-title" style={{ margin: 0 }}>Пространство</span>
                     <span className="small muted" title={fileScope || undefined}>{visibleFileCount}</span>
                   </button>
                   {filesOpen && (
@@ -503,7 +504,7 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
             <div className="ws-tabs">
               {tabs.map((t) => (
                 <button key={t} className={`ws-tab ${active === t ? "active" : ""}`} onClick={() => setActive(t)}>
-                  {t === CANVAS ? "🖌 Холст" : `${t.split("/").pop()}${dirty[t] ? " •" : ""}`}
+                  {t === CANVAS ? <><Icon name="palette" /> Холст</> : `${t.split("/").pop()}${dirty[t] ? " •" : ""}`}
                   {t !== CANVAS && (
                     <span className="x" onClick={(e) => { e.stopPropagation(); closeTab(t); }}>✕</span>
                   )}
@@ -517,11 +518,11 @@ function WorkspaceBody({ courseId, nodeId, stage, tools, domain, taskPanel, help
                 {lang === "python" && (
                   <input style={{ width: 180, height: 28, padding: "2px 8px", fontSize: 12 }} placeholder="stdin для input()" value={stdin} onChange={(e) => setStdin(e.target.value)} />
                 )}
-                {lockReason && <span className="lock-note" title={lockReason}>🔒 сначала ответь</span>}
+                {lockReason && <span className="lock-note" title={lockReason}><Icon name="lock" /> Сначала ответь</span>}
                 {lang && (
                   <button className="btn sm primary" onClick={runActive} disabled={running || !!lockReason}
                     title={lockReason ?? undefined}>
-                    {running ? <span className="spinner" /> : lockReason ? "🔒 Запустить" : "▶ Запустить"}
+                    {running ? <span className="spinner" /> : <> <Icon name={lockReason ? "lock" : "play"} /> Запустить</>}
                   </button>
                 )}
                 <button className="btn sm ghost" onClick={() => setShowOutput((s) => !s)}>Вывод</button>

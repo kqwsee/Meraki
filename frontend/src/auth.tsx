@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     api
-      .get<User>("/auth/me")
+      .get<User>("/auth/me", { redirectOnUnauthorized: false })
       .then((u) => {
         setUser(u);
         tracker.start();

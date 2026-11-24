@@ -33,10 +33,12 @@ function headers(json = true): Record<string, string> {
   return h;
 }
 
-async function handle<T>(res: Response): Promise<T> {
+async function handle<T>(res: Response, redirectOnUnauthorized = true): Promise<T> {
   if (res.status === 401) {
     setToken(null);
-    if (!location.pathname.startsWith("/login")) location.href = "/login";
+    if (redirectOnUnauthorized && location.pathname !== "/" && !location.pathname.startsWith("/login")) {
+      location.href = "/login";
+    }
   }
   const where = res.url ? res.url.replace(location.origin, "") : "";
   if (!res.ok) {
@@ -71,8 +73,9 @@ function htmlInsteadOfJsonMessage(where: string): string {
 export const api = {
   // no-store: profile/talent/writing views poll in a loop, and a heuristically cached GET would
   // silently freeze the live numbers in a long-open tab
-  get: <T = any>(url: string) =>
-    fetch(`/api${url}`, { headers: headers(false), cache: "no-store" }).then((r) => handle<T>(r)),
+  get: <T = any>(url: string, options?: { redirectOnUnauthorized?: boolean }) =>
+    fetch(`/api${url}`, { headers: headers(false), cache: "no-store" })
+      .then((r) => handle<T>(r, options?.redirectOnUnauthorized)),
   post: <T = any>(url: string, body?: unknown) =>
     fetch(`/api${url}`, { method: "POST", headers: headers(), body: JSON.stringify(body ?? {}) }).then((r) => handle<T>(r)),
   put: <T = any>(url: string, body?: unknown) =>

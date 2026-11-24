@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -228,7 +229,7 @@ export default function NodePage() {
               )}
               {st.node.mode === "fast" && (current === "prologue" || current === "lecture") && (
                 <button className="btn" onClick={() => confirm("Сдать тему экстерном — сразу экзамен без лекции и практики?") && advance("exam")} disabled={!!busy}>
-                  ⚡ Сдать экстерном
+                  <Icon name="zap" /> Сдать экстерном
                 </button>
               )}
               {viewing !== current && current !== "done" && (
@@ -262,9 +263,9 @@ export default function NodePage() {
               {side && (
                 <div className="ws-section">
                   {st.progress.completed ? (
-                    <div className="alert success small">✨ Квест пройден. Он не входит в прогресс курса и лидерборд.</div>
+                    <div className="alert success small">Квест пройден. Он не входит в прогресс курса и лидерборд.</div>
                   ) : (
-                    <div className="alert small">✨ Побочный квест: реши вызов, и он засчитается. Экзамена нет.</div>
+                    <div className="alert small">Побочный квест: реши вызов, и он засчитается. Экзамена нет.</div>
                   )}
                   <Link className="btn" style={{ width: "100%", marginTop: 8 }} to={`/courses/${st.course.id}`}>← К графу курса</Link>
                 </div>
@@ -415,7 +416,7 @@ function ResultView({ st, ex, id, onJob, onPractice }: {
           <div className="small muted">из 100</div>
         </div>
         <div style={{ flex: 1 }}>
-          <h2 style={{ margin: 0 }}>{passed ? "Тема сдана! 🎉" : "Пока не сдано"}</h2>
+          <h2 style={{ margin: 0 }}>{passed ? "Тема сдана" : "Пока не сдано"}</h2>
           <div className="small muted">
             Порог {st.pass_score}. Баллы за задания: {Math.round(ex.raw_score ?? 0)}
             {ex.understanding != null && <> · понимание при защите решения: {Math.round(ex.understanding * 100)}%</>}
@@ -430,7 +431,7 @@ function ResultView({ st, ex, id, onJob, onPractice }: {
       </div>
       {ex.summary && <div className="card"><Markdown>{ex.summary}</Markdown></div>}
       {passed ? (
-        <div className="alert success">🧭 Наставник обновляет твой профиль и перестраивает маршрут по курсу с учётом этой темы.</div>
+        <div className="alert success">Наставник обновляет твой профиль и перестраивает маршрут по курсу с учётом этой темы.</div>
       ) : (
         <div className="alert warning">Это нормально: ошибки на экзамене показывают, что стоит доработать. Потренируй слабые места и пересдай.</div>
       )}

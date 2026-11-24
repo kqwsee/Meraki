@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useEffect, useState } from "react";
 import { DOMAIN_ICONS } from "../components/ui";
 import type { CourseFull, Meta } from "./types";
@@ -41,7 +42,7 @@ export default function BasicsStep({ meta, course, busy, onSave }: {
           <div className="domain-grid">
             {Object.entries(meta.domains).map(([k, v]) => (
               <button key={k} type="button" className={`domain-pick ${domain === k ? "on" : ""}`} onClick={() => setDomain(k)} aria-pressed={domain === k}>
-                <span className="ico">{DOMAIN_ICONS[k]}</span>
+                <span className="ico"><Icon name={DOMAIN_ICONS[k] ?? "graduation"} /></span>
                 <span>{v}</span>
               </button>
             ))}

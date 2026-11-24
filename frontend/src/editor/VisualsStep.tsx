@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 /**
  * Course editor step "Наглядность": the AI drafts visuals for every topic's lecture, the author checks each one
  * (approve / edit / redo / delete) and adds pictures with descriptions and topic covers. Learners only see what
@@ -176,7 +177,7 @@ export default function VisualsStep({ course, order, state, setState, reload, fo
           </div>
           <button className="btn primary" disabled={running || !!busy} onClick={generateAll}
             title="ИИ подготовит материалы ко всем темам, где их ещё нет. Это займёт несколько минут.">
-            {busy === "all" ? <span className="spinner" /> : "✨ Подготовить для всех тем без наглядности"}
+            {busy === "all" ? <span className="spinner" /> : "Подготовить для всех тем без наглядности"}
           </button>
         </div>
         {job?.running && (
@@ -250,8 +251,8 @@ export default function VisualsStep({ course, order, state, setState, reload, fo
               </div>
 
               <div className="row mt" style={{ gap: 8 }}>
-                <button className="btn primary" disabled={!!busy || running} onClick={() => setWishesOpen((o) => !o)}>✨ Подготовить с ИИ</button>
-                <button className="btn" disabled={!!busy} onClick={() => setPicker({ purpose: "visual" })}>🖼 Картинка</button>
+                <button className="btn primary" disabled={!!busy || running} onClick={() => setWishesOpen((o) => !o)}>Подготовить с ИИ</button>
+                <button className="btn" disabled={!!busy} onClick={() => setPicker({ purpose: "visual" })}><Icon name="image" /> Картинка</button>
                 <button className="btn" disabled={!!busy || !!creating} onClick={newOwn}>＋ Своя схема</button>
                 <span className="spacer" />
                 {drafts > 0 && (
@@ -280,7 +281,7 @@ export default function VisualsStep({ course, order, state, setState, reload, fo
                   </span>
                   {queries.map((q) => (
                     <span key={q} className="query-chip">
-                      <button className="pins-chip" onClick={() => setPicker({ purpose: "visual", query: q })} title="Найти картинки по этому запросу">🔎 {q}</button>
+                      <button className="pins-chip" onClick={() => setPicker({ purpose: "visual", query: q })} title="Найти картинки по этому запросу"><Icon name="search" /> {q}</button>
                       <button className="query-chip-x" onClick={() => dropQuery(q)} title="Не подходит — убрать подсказку" aria-label={`Убрать подсказку «${q}»`}>×</button>
                     </span>
                   ))}

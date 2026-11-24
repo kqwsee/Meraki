@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 /**
  * Picking a picture for a topic (as a lecture visual or as the topic's cover): the author's uploads, figures taken
  * out of the uploaded PDF/DOCX materials, or pictures from Russian or English Wikipedia articles (free files of
@@ -143,7 +144,7 @@ export default function ImagePicker({ courseId, purpose, queries = [], initialQu
               onClick={() => fileInput.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileInput.current?.click()}
               onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
               onDrop={(e) => { e.preventDefault(); setOver(false); upload(e.dataTransfer.files); }}>
-              <span className="drop-ico">{busy === "upload" ? <span className="spinner" /> : "🖼️"}</span>
+              <span className="drop-ico">{busy === "upload" ? <span className="spinner" /> : <Icon name="image" />}</span>
               <b>Перетащите картинки сюда или нажмите, чтобы выбрать</b>
               <span className="small muted">PNG, JPEG, GIF, WebP до 15 МБ. Большие уменьшатся до 2400 пикселей.</span>
               <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => e.target.files && upload(e.target.files)} />
@@ -195,7 +196,7 @@ export default function ImagePicker({ courseId, purpose, queries = [], initialQu
                       <span className="t">{h.title || "Без названия"}</span>
                       {h.article && <span className="faint">из статьи «{h.article}»</span>}
                       <span className="faint">{h.license || "лицензия не указана"}{h.author ? ` · ${h.author}` : ""}</span>
-                      {h.page_url && <a className="faint" href={h.page_url} target="_blank" rel="noopener noreferrer">страница ↗</a>}
+                      {h.page_url && <a className="faint" href={h.page_url} target="_blank" rel="noopener noreferrer">страница <Icon name="external" /></a>}
                     </div>
                   </div>
                 ))}

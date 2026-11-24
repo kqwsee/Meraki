@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 /** One visual of a lecture, as learners see it (the course editor shows the same thing as its preview). */
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { HtmlToolView } from "../tools/custom";
@@ -30,7 +31,7 @@ function ToolPreset({ visual, courseId, nodeId, onError }: { visual: VisualDto; 
   const Tool = def.component;
   return (
     <div className="vis-tool-box">
-      <div className="vis-tool-head small muted">{def.icon} {def.name} · попробуй сам</div>
+      <div className="vis-tool-head small muted"><Icon name={def.icon} /> {def.name} · попробуй сам</div>
       <ToolInstanceProvider key={instance} id={instance}>
         <Suspense fallback={<div className="vis-loading"><span className="spinner" /></div>}>
           <Tool courseId={courseId} nodeId={nodeId} />

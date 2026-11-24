@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 /**
  * Tool widgets floating over the Excalidraw canvas.
  *
@@ -123,7 +124,7 @@ export default function CanvasWidgets({ instances, courseId, nodeId, onUpdate, o
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
             >
-              <span className="cw-ico">{def?.icon ?? "❓"}</span>
+              <span className="cw-ico"><Icon name={def?.icon ?? "help"} /></span>
               <span className="cw-name">{def?.name ?? `Инструмент «${inst.toolId}» недоступен`}</span>
               <button className="cw-btn" title={inst.collapsed ? "Развернуть" : "Свернуть"}
                 onClick={() => onUpdate(inst.id, { collapsed: !inst.collapsed })}>

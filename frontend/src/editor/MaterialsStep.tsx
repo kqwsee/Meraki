@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useRef, useState } from "react";
 import { api } from "../api";
 import { guessKind, KIND_NAMES, plural, type CourseFull, type Excerpt } from "./types";
@@ -5,7 +6,7 @@ import { guessKind, KIND_NAMES, plural, type CourseFull, type Excerpt } from "./
 type Way = "files" | "url" | "text";
 
 const ext = (name: string) => (name.toLowerCase().match(/\.([a-z0-9]+)(?:\s|\(|$)/)?.[1] ?? "").toUpperCase();
-const ICONS: Record<string, string> = { PDF: "📕", DOCX: "📘", TXT: "📄", MD: "📄" };
+const ICONS: Record<string, string> = { PDF: "book", DOCX: "book", TXT: "file", MD: "file" };
 
 export default function MaterialsStep({ course, excerpts, reload, onError, openInPins }: {
   course: CourseFull;
@@ -63,9 +64,9 @@ export default function MaterialsStep({ course, excerpts, reload, onError, openI
       </p>
 
       <div className="tabs" style={{ maxWidth: 440, margin: "16px 0" }}>
-        <button className={way === "files" ? "active" : ""} onClick={() => setWay("files")}>📄 Файлы</button>
-        <button className={way === "url" ? "active" : ""} onClick={() => setWay("url")}>🔗 Ссылка</button>
-        <button className={way === "text" ? "active" : ""} onClick={() => setWay("text")}>✍️ Текст</button>
+        <button className={way === "files" ? "active" : ""} onClick={() => setWay("files")}><Icon name="file" /> Файлы</button>
+        <button className={way === "url" ? "active" : ""} onClick={() => setWay("url")}><Icon name="link" /> Ссылка</button>
+        <button className={way === "text" ? "active" : ""} onClick={() => setWay("text")}><Icon name="note" /> Текст</button>
       </div>
 
       {way === "files" && (
@@ -83,7 +84,7 @@ export default function MaterialsStep({ course, excerpts, reload, onError, openI
             <div className="row" style={{ justifyContent: "center" }}><span className="spinner" /> {progress}</div>
           ) : (
             <>
-              <div className="drop-ico">⬆️</div>
+              <div className="drop-ico"><Icon name="upload" /></div>
               <b>Перетащите файлы сюда или нажмите, чтобы выбрать</b>
               <div className="small muted">PDF, Word (.docx), TXT, Markdown · до 40 МБ каждый. Тип материала определится по названию, его можно сменить ниже.</div>
             </>
@@ -128,16 +129,16 @@ export default function MaterialsStep({ course, excerpts, reload, onError, openI
         <div className="mat-list">
           {course.materials.map((m) => (
             <div key={m.id} className="mat-row">
-              <span className="mat-ico" title={ext(m.filename)}>{ICONS[ext(m.filename)] ?? "📄"}</span>
+              <span className="mat-ico" title={ext(m.filename)}><Icon name={ICONS[ext(m.filename)] ?? "file"} /></span>
               <div className="mat-name">
                 <div className="t" title={m.filename}>{m.filename}</div>
-                <div className="small muted">{(m.chars / 1000).toFixed(1)} тыс. знаков{pins(m.id) ? ` · 🎯 закреплено: ${pins(m.id)}` : ""}</div>
+                <div className="small muted">{(m.chars / 1000).toFixed(1)} тыс. знаков{pins(m.id) ? ` · закреплено: ${pins(m.id)}` : ""}</div>
               </div>
               <select className="mat-kind" value={m.kind} aria-label="Тип материала"
                 onChange={(e) => run(() => api.patch(`/courses/${course.id}/materials/${m.id}`, { kind: e.target.value }))}>
                 {Object.entries(KIND_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              <button className="btn sm" onClick={() => openInPins(m.id)} title="Открыть текст и выбрать обязательные фрагменты">🎯 Выбрать фрагменты</button>
+              <button className="btn sm" onClick={() => openInPins(m.id)} title="Открыть текст и выбрать обязательные фрагменты"><Icon name="target" /> Выбрать фрагменты</button>
               <button className="icon-btn" title="Удалить материал" aria-label="Удалить материал"
                 onClick={() => {
                   if (confirm(`Удалить «${m.filename}»?${pins(m.id) ? "\n\nЗакреплённые из него фрагменты останутся в курсе: их текст сохранён." : ""}`))

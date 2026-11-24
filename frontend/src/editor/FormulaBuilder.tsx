@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useRef } from "react";
 import { defaultValues, evalFormula, explain, formulaHtml, type FormulaInput, type FormulaOutput, type FormulaSpec } from "../tools/formula";
 import { FORMULA_FUNCTIONS, FORMULA_PRESETS, type Preset } from "./toolDraft";
@@ -40,7 +41,7 @@ export default function FormulaBuilder({ spec, onChange, onPreset }: {
         <div className="eyebrow mb" style={{ marginBottom: 8 }}>Начать с шаблона</div>
         <div className="row" style={{ gap: 6 }}>
           {FORMULA_PRESETS.map((p) => (
-            <button key={p.id} type="button" className="chip" title={p.description} onClick={() => onPreset(p)}>{p.icon} {p.name}</button>
+            <button key={p.id} type="button" className="chip" title={p.description} onClick={() => onPreset(p)}><Icon name={p.icon} /> {p.name}</button>
           ))}
         </div>
       </div>
@@ -101,7 +102,7 @@ export default function FormulaBuilder({ spec, onChange, onPreset }: {
                 </select>
               </div>
               <div className="fb-live">
-                {res?.error ? <span className="err">⚠ {explain(res.error)}</span> : o.expr.trim() ? <span>При значениях по умолчанию: <b>{res?.text}{o.unit && res?.text !== "—" ? ` ${o.unit}` : ""}</b></span> : <span className="muted">Введите формулу</span>}
+                {res?.error ? <span className="err"><Icon name="warning" /> {explain(res.error)}</span> : o.expr.trim() ? <span>При значениях по умолчанию: <b>{res?.text}{o.unit && res?.text !== "—" ? ` ${o.unit}` : ""}</b></span> : <span className="muted">Введите формулу</span>}
                 {tex && !res?.error && <span className="fb-tex" dangerouslySetInnerHTML={{ __html: tex }} />}
               </div>
             </div>

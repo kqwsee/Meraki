@@ -49,7 +49,7 @@ export function runPython(opts: { files: Record<string, string>; entry?: string;
         resolve();
       };
       timer = window.setTimeout(() => {
-        onOut("err", `\n⏱ Превышено время выполнения (${TIMEOUT_MS / 1000} с) — выполнение остановлено.\n`);
+        onOut("err", `\nПревышено время выполнения (${TIMEOUT_MS / 1000} с) — выполнение остановлено.\n`);
         pyHandlers.delete(id);
         killPy();
         finish();
@@ -101,7 +101,7 @@ export function runJavaScript(code: string, onOut: OnOut): Promise<void> {
       resolve();
     };
     const timer = window.setTimeout(() => {
-      onOut("err", `\n⏱ Превышено время выполнения (${TIMEOUT_MS / 1000} с).\n`);
+      onOut("err", `\nПревышено время выполнения (${TIMEOUT_MS / 1000} с).\n`);
       finish();
     }, TIMEOUT_MS);
     worker.onmessage = (e) => {

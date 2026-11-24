@@ -19,7 +19,7 @@ export const useToolCatalog = () => useContext(Ctx);
 export function toolDefOf(c: CustomToolDto): ToolDef {
   const component: ComponentType<ToolProps> = () => <CustomToolView tool={c} />;
   return {
-    id: c.tool_id, name: c.name, icon: c.icon || "🧩", domains: [], keywords: `${c.name} ${c.description}`, component, custom: true,
+    id: c.tool_id, name: c.name, icon: c.icon || (c.kind === "formula" ? "calculator" : "puzzle"), domains: [], keywords: `${c.name} ${c.description}`, component, custom: true,
     description: c.description,
   };
 }

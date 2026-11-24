@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
@@ -10,7 +11,7 @@ function TalentCard({ talent }: { talent: TalentInfoT }) {
   return (
     <div className="card talent-card">
       <div className="talent-card-head">
-        <span className="talent-card-icon" aria-hidden="true">{talent.icon}</span>
+        <span className="talent-card-icon" aria-hidden="true"><Icon name={talent.icon} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="talent-card-title">{talent.title}</div>
           <div className="small muted">{talent.label} талант</div>

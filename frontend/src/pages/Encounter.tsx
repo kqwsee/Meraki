@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -17,7 +18,7 @@ type Encounter = {
   result: Result | null;
 };
 
-const KIND_LABEL: Record<string, string> = { recall: "🎲 Случайная встреча", bridge: "🌉 Мостик на пути" };
+const KIND_LABEL: Record<string, string> = { recall: "Случайная встреча", bridge: "Мостик на пути" };
 const Q_LABEL: Record<string, string> = { recall: "Вспомни", transfer: "Примени по-новому", check: "Проверь себя" };
 
 export default function EncounterPage() {
@@ -32,7 +33,7 @@ export default function EncounterPage() {
   const load = useCallback(async () => {
     try {
       let v = await api.get<Encounter>(`/adventures/${id}`);
-      if (v.kind === "side") return nav("/", { replace: true });
+      if (v.kind === "side") return nav("/courses", { replace: true });
       if (!v.content && (v.status === "offered" || v.status === "active")) {
         setPreparing(true); // opened by a direct link: the content has not been made yet
         await api.post(`/adventures/${id}/accept`);
@@ -63,7 +64,7 @@ export default function EncounterPage() {
     return (
       <div className="page" style={{ maxWidth: 640 }}>
         <div className="card center">
-          <div style={{ fontSize: 40 }}>🍃</div>
+          <span className="icon-frame mb"><Icon name="history" /></span>
           <p className="muted">Эта встреча уже закончилась: {e.status === "dismissed" ? "ты от неё ушёл(а)" : "она ушла с карты"}.</p>
           {back}
         </div>

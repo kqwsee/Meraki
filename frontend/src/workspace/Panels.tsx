@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import Markdown from "../components/Markdown";
@@ -18,7 +19,7 @@ const SCAFFOLD: Record<string, string> = {
 const BLOOM: Record<string, string> = {
   remember: "вспомнить", understand: "понять", apply: "применить", analyze: "анализ", evaluate: "оценка", create: "создание",
 };
-const KIND: Record<string, string> = { code: "💻 код", text: "✍️ ответ", calc: "🧮 расчёт", canvas: "🖌 холст" };
+const KIND: Record<string, string> = { code: "код", text: "ответ", calc: "расчёт", canvas: "холст" };
 
 /** PRIMM-style tasks ask the learner to reason about code before running it — lock execution until they answer. */
 export function predictLock(t?: TaskT | null): string | null {
@@ -89,7 +90,7 @@ function useAttachments(task: TaskT | undefined) {
 function TaskMeta({ t }: { t: TaskT }) {
   return (
     <div className="row" style={{ gap: 4, marginTop: 4 }}>
-      {t.from_author && <span className="badge warning" title="Это задание выбрал преподаватель курса">🎓 от преподавателя</span>}
+      {t.from_author && <span className="badge warning" title="Это задание выбрал преподаватель курса"><Icon name="graduation" /> от преподавателя</span>}
       <span className="badge">{KIND[t.kind] ?? t.kind}</span>
       {t.scaffold && <span className="badge accent">{SCAFFOLD[t.scaffold] ?? t.scaffold}</span>}
       {t.bloom && <span className="badge">Блум: {BLOOM[t.bloom] ?? t.bloom}</span>}
@@ -180,18 +181,18 @@ export function PracticePanel({ tasks, generating, onReload, onMore, onActive }:
             <div className="mt"><Markdown>{task.statement}</Markdown></div>
             {task.starter_files.length > 0 && (
               <div className="row" style={{ gap: 4 }}>
-                {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}>📄 {p.split("/").pop()}</button>)}
+                {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}><Icon name="file" /> {p.split("/").pop()}</button>)}
               </div>
             )}
-            {task.kind === "canvas" && <button className="btn sm mt" onClick={ws.showCanvas}>🖌 Открыть холст</button>}
-            {lock && <div className="alert warning mt lock-banner">🔒 {lock}</div>}
+            {task.kind === "canvas" && <button className="btn sm mt" onClick={ws.showCanvas}><Icon name="palette" /> Открыть холст</button>}
+            {lock && <div className="alert warning mt lock-banner"><Icon name="lock" /> {lock}</div>}
 
-            {task.hints.slice(0, shown).map((h, i) => <div key={i} className="hint">💡 {h}</div>)}
+            {task.hints.slice(0, shown).map((h, i) => <div key={i} className="hint"><Icon name="bulb" /> {h}</div>)}
             {shown < task.hints.length && (
               <button className="btn sm ghost mt" onClick={() => {
                 setHintsShown((s) => ({ ...s, [task.id]: shown + 1 }));
                 tracker.log("hint_open", `task:${task.id}`, { index: shown + 1 });
-              }}>💡 Подсказка {shown + 1}/{task.hints.length}</button>
+              }}><Icon name="bulb" /> Подсказка {shown + 1}/{task.hints.length}</button>
             )}
 
             <label className="field mt">
@@ -329,7 +330,7 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
     <div className="task-panel">
       <div className="ws-section" style={{ paddingBottom: 10 }}>
         <div className="row">
-          <div className="ws-section-title" style={{ margin: 0 }}>🎓 Экзамен</div>
+          <div className="ws-section-title" style={{ margin: 0 }}>Экзамен</div>
           <span className="spacer" />
           <span className={`exam-timer ${left < 5 * 60000 ? "low" : ""}`}>{mm}:{ss}</span>
         </div>
@@ -350,10 +351,10 @@ export function ExamPanel({ attempt, onSubmitted, onActive }: { attempt: Attempt
             <div className="mt"><Markdown>{task.statement}</Markdown></div>
             {task.starter_files.length > 0 && (
               <div className="row" style={{ gap: 4 }}>
-                {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}>📄 {p.split("/").pop()}</button>)}
+                {task.starter_files.map((p) => <button key={p} className="btn sm" onClick={() => ws.openFile(p)}><Icon name="file" /> {p.split("/").pop()}</button>)}
               </div>
             )}
-            {lock && <div className="alert warning mt lock-banner">🔒 {lock}</div>}
+            {lock && <div className="alert warning mt lock-banner"><Icon name="lock" /> {lock}</div>}
             <label className="field mt">
               Ответ
               <textarea rows={5} value={answers[task.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [task.id]: e.target.value }))} {...handlers} />

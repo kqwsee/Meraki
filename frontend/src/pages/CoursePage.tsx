@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -19,7 +20,7 @@ type CourseView = {
   adventures: { enabled: boolean; dev: boolean; items: Adventure[]; stats: { side_done: number; encounters_done: number } };
 };
 
-const ADV_ICON = { side: "✨", recall: "🎲", bridge: "🌉" } as const;
+const ADV_ICON = { side: "compass", recall: "dice", bridge: "route" } as const;
 const ADV_NAME = { side: "Побочный квест", recall: "Случайная встреча", bridge: "Мостик на пути" } as const;
 
 // with a fully fixed order every topic stays in place, so the pin carries no extra meaning
@@ -131,13 +132,13 @@ export default function CoursePage() {
   return (
     <div>
       <div className="row mb" style={{ alignItems: "flex-start", gap: 16 }}>
-        <span className="domain-ico" style={{ width: 52, height: 52, fontSize: 26, borderRadius: 14 }}>{DOMAIN_ICONS[c.domain] ?? "🎓"}</span>
+        <span className="icon-frame"><Icon name={DOMAIN_ICONS[c.domain] ?? "graduation"} /></span>
         <div style={{ flex: 1, minWidth: 240 }}>
           <div className="eyebrow">{c.domain_name}</div>
           <h1 style={{ margin: "4px 0 6px" }}>{c.title}</h1>
           <div className="muted small">автор {c.author} · {topics.filter((n) => !n.personal).length} тем</div>
         </div>
-        <Link className="btn" to={`/courses/${c.id}/leaderboard`}>🏆 Лидерборд</Link>
+        <Link className="btn" to={`/courses/${c.id}/leaderboard`}><Icon name="trophy" /> Лидерборд</Link>
         {c.is_author && <Link className="btn" to={`/courses/${c.id}/edit`}>Редактировать</Link>}
         {!c.enrolled && c.status === "ready" && (
           <button className="btn primary lg" disabled={busy} onClick={async () => {
@@ -150,7 +151,7 @@ export default function CoursePage() {
       <p className="muted" style={{ maxWidth: 820, fontSize: 15.5 }}>{c.summary || c.description}</p>
 
       {c.enrolled && (
-        <div className="card grid-bg mb mt">
+        <div className="card mb mt">
           <div className="row" style={{ alignItems: "flex-end", gap: 24 }}>
             <div style={{ flex: 1, minWidth: 240 }}>
               <div className="eyebrow">Прогресс по курсу</div>
@@ -170,7 +171,7 @@ export default function CoursePage() {
           </div>
           {c.route.message && (
             <div className="alert mt">
-              <b>🧭 Твой маршрут{c.route.replans ? ` · перестроен ${c.route.replans} раз` : ""}</b>
+              <b className="icon-label"><Icon name="route" /> Твой маршрут{c.route.replans ? ` · перестроен ${c.route.replans} раз` : ""}</b>
               <div style={{ marginTop: 4 }}>{c.route.message}</div>
             </div>
           )}
@@ -189,7 +190,7 @@ export default function CoursePage() {
             <span className="spacer" />
             {adv.dev && (
               <button className="btn sm ghost" disabled={busy} onClick={rollDice} title="Только для разработки: бросить кубик сразу">
-                {busy ? <span className="spinner" /> : "🎲 Бросить кубик"}
+                {busy ? <span className="spinner" /> : <><Icon name="dice" /> Бросить кубик</>}
               </button>
             )}
           </div>
@@ -201,7 +202,7 @@ export default function CoursePage() {
             <div className="adv-list">
               {open.map((a) => (
                 <div key={a.id} className={`adv-row ${a.kind}`}>
-                  <span className="adv-ico">{ADV_ICON[a.kind]}</span>
+                  <span className="adv-ico"><Icon name={ADV_ICON[a.kind]} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="small muted">{ADV_NAME[a.kind]}{a.status === "active" ? " · начата" : ""}</div>
                     <b style={{ color: "var(--text-strong)" }}>{a.title}</b>
@@ -212,7 +213,7 @@ export default function CoursePage() {
               ))}
               {quests.filter((q) => !q.completed).map((q) => (
                 <div key={q.id} className="adv-row side">
-                  <span className="adv-ico">✨</span>
+                  <span className="adv-ico"><Icon name="compass" /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="small muted">Побочный квест · в процессе</div>
                     <b style={{ color: "var(--text-strong)" }}>{q.title}</b>
@@ -224,7 +225,7 @@ export default function CoursePage() {
           )}
           {(adv.stats.side_done > 0 || adv.stats.encounters_done > 0) && (
             <div className="small muted" style={{ marginTop: 10 }}>
-              ✨ Квестов пройдено: <b>{adv.stats.side_done}</b> · 🎲 Встреч: <b>{adv.stats.encounters_done}</b>
+              Квестов пройдено: <b>{adv.stats.side_done}</b> · Встреч: <b>{adv.stats.encounters_done}</b>
             </div>
           )}
         </div>
@@ -234,7 +235,7 @@ export default function CoursePage() {
         <div style={{ minWidth: 0 }}>
           <div className="row mb" style={{ gap: 8 }}>
             <button className="btn sm" onClick={() => setHistory(true)} title="Все варианты графа: прошлые — только для просмотра">
-              🕘 История графа
+              <Icon name="history" /> История графа
             </button>
             <span className="small muted">как менялся граф</span>
           </div>
@@ -256,13 +257,13 @@ export default function CoursePage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="route-title">
                       {n.title}
-                      {n.pinned && <span title="Автор закрепил тему на этом месте"> 📌</span>}
+                      {n.pinned && <span title="Автор закрепил тему на этом месте"><Icon name="pin" /></span>}
                     </div>
                     {((n.stage && !n.completed) || mode || (c.enrolled && !n.unlocked && !n.completed)) && (
                       <div className="row" style={{ gap: 4, marginTop: 6 }}>
                         {n.stage && !n.completed && <span className="badge accent">{STAGE_NAMES[n.stage]}</span>}
                         {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}
-                        {c.enrolled && !n.unlocked && !n.completed && <span className="badge">🔒 закрыта</span>}
+                        {c.enrolled && !n.unlocked && !n.completed && <span className="badge"><Icon name="lock" /> закрыта</span>}
                       </div>
                     )}
                   </div>
@@ -277,7 +278,7 @@ export default function CoursePage() {
 
       {offer && (
         <Modal
-          title={`${ADV_ICON[offer.kind]} ${ADV_NAME[offer.kind]}`}
+          title={ADV_NAME[offer.kind]}
           onClose={() => !taking && setOffer(null)}
           footer={taking ? undefined : (
             <>

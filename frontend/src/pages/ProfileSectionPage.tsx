@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -55,7 +56,7 @@ export default function ProfileSectionPage() {
       <div className="talent-page-head mb">
         <div style={{ flex: 1, minWidth: 260 }}>
           <Link className="small muted" to="/profile">← Профиль</Link>
-          <h1 style={{ margin: "4px 0 6px" }}>{meta.icon} {meta.title}</h1>
+          <h1 className="icon-label" style={{ margin: "4px 0 6px" }}><Icon name={meta.icon} /> {meta.title}</h1>
           <p className="muted" style={{ margin: 0 }}>Раздел профиля целиком: показатели и моменты, которые на них повлияли.</p>
         </div>
         {section === "writing" && (
@@ -64,7 +65,7 @@ export default function ProfileSectionPage() {
               <span className="live-dot" /> в реальном времени
               {loadedAt ? ` · ${loadedAt.toLocaleTimeString("ru-RU")}` : ""}
             </span>
-            <button className="btn" onClick={() => load()}>↻ Обновить</button>
+            <button className="btn" onClick={() => load()}><Icon name="refresh" /> Обновить</button>
           </>
         )}
       </div>

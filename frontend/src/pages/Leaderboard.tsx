@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -8,8 +9,6 @@ type Entry = {
   completed: number; total: number; progress: number; avg_score: number | null;
 };
 type LeaderboardT = { course_title: string; total_nodes: number; entries: Entry[] };
-
-const MEDALS: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
 export default function Leaderboard() {
   const { id } = useParams();
@@ -38,7 +37,7 @@ export default function Leaderboard() {
       </p>
       {lb.entries.length === 0 ? (
         <div className="card center" style={{ maxWidth: 480, margin: "40px auto" }}>
-          <div style={{ fontSize: 40 }}>🏆</div>
+          <span className="icon-frame mb"><Icon name="trophy" /></span>
           <p className="muted">Пока никто не записался на курс — будь первым в рейтинге.</p>
         </div>
       ) : (
@@ -46,14 +45,14 @@ export default function Leaderboard() {
           <div className="route">
             {lb.entries.map((e) => (
               <div key={e.user_id} className={`lb-row ${e.is_me ? "me" : ""}`}>
-                <span className="lb-rank">{MEDALS[e.rank] ?? e.rank}</span>
+                <span className={`lb-rank ${e.rank === 1 ? "first" : ""}`}>{e.rank}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row" style={{ gap: 8 }}>
                     <b style={{ color: "var(--text-strong)" }}>{e.name}</b>
                     {e.is_me && <span className="badge accent">ты</span>}
                     <span className="spacer" />
                     <span className="small muted">{e.completed}/{e.total} тем</span>
-                    {e.avg_score != null && <span className="badge">★ {e.avg_score}</span>}
+                    {e.avg_score != null && <span className="badge"><Icon name="exam" /> {e.avg_score}</span>}
                   </div>
                   <Progress value={e.progress} />
                 </div>

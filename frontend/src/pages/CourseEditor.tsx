@@ -18,6 +18,10 @@ const NO_VISUALS: VisualsState = { items: [], job: null, image_queries: {}, cove
 
 export default function CourseEditor() {
   const { id } = useParams();
+  return <CourseEditorForm key={id ?? "new"} id={id} />;
+}
+
+function CourseEditorForm({ id }: { id?: string }) {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -29,10 +33,12 @@ export default function CourseEditor() {
   const [visuals, setVisuals] = useState<VisualsState>(NO_VISUALS);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const isOwner = course?.is_author === true;
 
   useEffect(() => {
-    api.get<Meta>("/meta").then(setMeta);
-  }, []);
+    if (id && !isOwner) return;
+    api.get<Meta>("/meta").then(setMeta).catch((e) => setError(e.message));
+  }, [id, isOwner]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -60,19 +66,23 @@ export default function CourseEditor() {
 
   useEffect(() => {
     load().catch((e) => setError(e.message));
+  }, [load]);
+
+  useEffect(() => {
+    if (!isOwner) return;
     loadExcerpts().catch((e) => setError(e.message));
     loadTools().catch((e) => setError(e.message));
     loadVisuals().catch((e) => setError(e.message));
-  }, [load, loadExcerpts, loadTools, loadVisuals]);
+  }, [isOwner, loadExcerpts, loadTools, loadVisuals]);
 
   // poll while the AI builds the graph
   useEffect(() => {
-    if (course?.status !== "processing") return;
+    if (!isOwner || course?.status !== "processing") return;
     const t = setInterval(() => {
       load().then(() => loadExcerpts()).catch(() => undefined);
     }, 3000);
     return () => clearInterval(t);
-  }, [course?.status, load, loadExcerpts]);
+  }, [isOwner, course?.status, load, loadExcerpts]);
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -86,7 +96,7 @@ export default function CourseEditor() {
     }
   }
 
-  const order = useMemo(() => (course ? studyOrder(course.nodes, course.edges) : []), [course]);
+  const order = useMemo(() => (course?.is_author ? studyOrder(course.nodes, course.edges) : []), [course]);
 
   // ----- steps -----
   const wanted = params.get("step") as StepKey | null;
@@ -102,6 +112,18 @@ export default function CourseEditor() {
     for (const [k, v] of Object.entries(extra)) p[k] = String(v);
     setParams(p, { replace: false });
     window.scrollTo({ top: 0 });
+  }
+
+  if (course && !isOwner) {
+    return (
+      <section className="card">
+        <header className="page-head">
+          <h1>Нет доступа к редактору</h1>
+          <p>Редактировать курс может только его владелец.</p>
+        </header>
+        <Link className="btn" to={`/courses/${course.id}`}>К курсу</Link>
+      </section>
+    );
   }
 
   if (!meta || (id && !course)) return error ? <ErrorBox error={error} /> : <Loading />;
@@ -140,7 +162,7 @@ export default function CourseEditor() {
     <div className="editor">
       <div className="row" style={{ marginBottom: 18, alignItems: "flex-start", gap: 16 }}>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <Link to="/" className="small muted">← Все курсы</Link>
+          <Link to="/courses" className="small muted">← Все курсы</Link>
           <h1 style={{ margin: "6px 0 0" }}>{course ? course.title : "Новый курс"}</h1>
         </div>
         {status && <span className={`badge ${status.cls}`} style={{ marginTop: 28 }}>{status.text}</span>}

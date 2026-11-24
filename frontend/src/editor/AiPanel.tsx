@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useState } from "react";
 import { api } from "../api";
 import type { CustomToolDto } from "../tools/custom";
@@ -59,14 +60,14 @@ export default function AiPanel({ courseId, draft, hasResult, problems, onResult
       {!hasResult ? (
         <div className="row">
           <button className="btn primary lg" disabled={busy || prompt.trim().length < 5} onClick={() => run(false, "")}>
-            {busy ? <><span className="spinner" /> ИИ создаёт инструмент…</> : "✨ Создать инструмент"}
+            {busy ? <><span className="spinner" /> ИИ создаёт инструмент…</> : "Создать инструмент"}
           </button>
           {busy && <span className="small muted">Обычно до минуты</span>}
         </div>
       ) : (
         <>
           <div className="alert small">
-            ✨ Готово — {draft.kind === "formula" ? "калькулятор по формулам" : "HTML-страница"}. Проверьте инструмент справа: поменяйте значения и понажимайте.
+            Готово — {draft.kind === "formula" ? "калькулятор по формулам" : "HTML-страница"}. Проверьте инструмент справа: поменяйте значения и понажимайте.
             Если что-то не так, опишите правку словами — ИИ изменит инструмент, не пересоздавая его.
           </div>
           <label className="field">
@@ -81,7 +82,7 @@ export default function AiPanel({ courseId, draft, hasResult, problems, onResult
             {problems.length > 0 && (
               <button className="btn" disabled={busy}
                 onClick={() => run(true, `Исправь ошибки инструмента:\n${problems.map((p) => `- ${p}`).join("\n")}`)}>
-                🛠 Исправить ошибки ({problems.length})
+                <Icon name="tools" /> Исправить ошибки ({problems.length})
               </button>
             )}
             <span className="spacer" />

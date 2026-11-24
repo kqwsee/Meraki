@@ -2,7 +2,11 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
+import Brand from "./components/Brand";
+import { Icon } from "./components/Icon";
+import { Loading } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
+import Home from "./pages/Home";
 import Login from "./pages/Login";
 
 // heavy pages (canvas, editors, graph) load on demand
@@ -24,47 +28,51 @@ function Shell({ children, wide = false }: { children: ReactNode; wide?: boolean
   const loc = useLocation();
   const [due, setDue] = useState(0);
   useEffect(() => {
-    api.get<{ due: number }>("/reviews").then((r) => setDue(r.due)).catch(() => undefined);
+    let cancelled = false;
+    api.get<{ due: number }>("/reviews").then((r) => {
+      if (!cancelled) setDue(r.due);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
   }, [loc.pathname]);
   return (
     <div className="app">
+      <a className="skip-link" href="#main-content">К содержанию</a>
       <header className="topbar">
-        <NavLink to="/" className="brand">
-          <img src="/favicon.svg" alt="" />
-          Meraki
-        </NavLink>
-        <nav className="nav">
-          <NavLink to="/" end>Главная</NavLink>
+        <Brand />
+        <nav className="nav" aria-label="Разделы Meraki">
+          <NavLink to="/" end><Icon name="home" /> Главная</NavLink>
+          <NavLink to="/courses"><Icon name="book" /> Курсы</NavLink>
           <NavLink to="/reviews">
-            Повторение {due > 0 && <span className="badge accent">{due}</span>}
+            <Icon name="refresh" /> Повторение {due > 0 && <span className="nav-count">{due}</span>}
           </NavLink>
-          <NavLink to="/profile">Профиль</NavLink>
+          <NavLink to="/profile"><Icon name="user" /> Профиль</NavLink>
         </nav>
         <div className="user-chip">
-          <span>{user?.name}</span>
-          <span className="badge">{user?.role === "author" ? "автор" : "ученик"}</span>
+          <span className="user-name" title={user?.name}>{user?.name}</span>
           <button
-            className="btn sm ghost"
+            className="btn sm ghost logout-button"
             onClick={async () => {
               await logout();
-              nav("/login");
+              nav("/", { replace: true });
             }}
           >
-            Выйти
+            <Icon name="logout" /> Выйти
           </button>
         </div>
       </header>
-      <Suspense fallback={<div className="loading-block"><span className="spinner" /></div>}>
-        {wide ? <main className="page-wide">{children}</main> : <main className="page">{children}</main>}
-      </Suspense>
+      <main id="main-content" className={wide ? "page-wide" : "page"} tabIndex={-1}>
+        <Suspense fallback={<Loading text="Загружаем страницу" />}>{children}</Suspense>
+      </main>
     </div>
   );
 }
 
-function Private({ children, wide }: { children: ReactNode; wide?: boolean }) {
+function Private({ children, wide, authorOnly }: { children: ReactNode; wide?: boolean; authorOnly?: boolean }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="loading-block"><span className="spinner" /></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  const { pathname, search, hash } = useLocation();
+  if (loading) return <Loading text="Загружаем страницу" />;
+  if (!user) return <Navigate to="/login" replace state={{ from: pathname + search + hash }} />;
+  if (authorOnly && user.role !== "author") return <Navigate to="/courses" replace />;
   return <Shell wide={wide}>{children}</Shell>;
 }
 
@@ -72,8 +80,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/" element={<Private><Dashboard /></Private>} />
-      <Route path="/courses/new" element={<Private><CourseEditor /></Private>} />
+      <Route path="/" element={<Home />} />
+      <Route path="/courses" element={<Private><Dashboard /></Private>} />
+      <Route path="/courses/new" element={<Private authorOnly><CourseEditor /></Private>} />
       <Route path="/courses/:id/edit" element={<Private><CourseEditor /></Private>} />
       <Route path="/courses/:id" element={<Private><CoursePage /></Private>} />
       <Route path="/courses/:id/leaderboard" element={<Private><Leaderboard /></Private>} />

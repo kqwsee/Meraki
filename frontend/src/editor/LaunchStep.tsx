@@ -71,7 +71,7 @@ export default function LaunchStep({ course, excerpts, customTools, visuals, bus
         <span className="spacer" />
         <button className="btn danger" onClick={() => {
           if (confirm("Удалить курс со всеми материалами и прогрессом учеников?"))
-            run("delc", async () => { await api.del(`/courses/${course.id}`); nav("/"); });
+            run("delc", async () => { await api.del(`/courses/${course.id}`); nav("/courses"); });
         }}>Удалить курс</button>
       </div>
     </>

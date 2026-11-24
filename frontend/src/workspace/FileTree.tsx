@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import { tracker } from "../telemetry/tracker";
@@ -28,7 +29,7 @@ function build(paths: string[]): TreeNode[] {
   return root.children;
 }
 
-const ICONS: Record<string, string> = { py: "🐍", js: "📜", sql: "🗃️", md: "📝", txt: "📄", json: "🔧", html: "🌐", css: "🎨", csv: "📊" };
+const ICONS: Record<string, string> = { py: "code", js: "code", sql: "database", md: "note", txt: "file", json: "braces", html: "code", css: "palette", csv: "bars" };
 
 export default function FileTree({ courseId, files, active, scope, createDir, onOpen, onChanged }: {
   courseId: number; files: string[]; active: string | null;
@@ -111,7 +112,7 @@ export default function FileTree({ courseId, files, active, scope, createDir, on
             style={{ paddingLeft: 6 + depth * 14 }}
             onClick={() => (n.dir ? setCollapsed((c) => ({ ...c, [n.path]: !c[n.path] })) : onOpen(full(n.path)))}
           >
-            <span>{n.dir ? (collapsed[n.path] ? "📁" : "📂") : ICONS[n.name.split(".").pop() ?? ""] ?? "📄"}</span>
+            <Icon name={n.dir ? (collapsed[n.path] ? "folder" : "folderOpen") : ICONS[n.name.split(".").pop() ?? ""] ?? "file"} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
             <span className="actions">
               {n.dir && <button className="icon-btn" title="Новый файл" onClick={(e) => { e.stopPropagation(); create(n.path, false); }}>＋</button>}

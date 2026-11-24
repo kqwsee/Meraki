@@ -1,3 +1,4 @@
+import { Icon } from "./Icon";
 import dagre from "@dagrejs/dagre";
 import {
   Background, Controls, Handle, MarkerType, Position, ReactFlow, type Connection, type Edge, type Node, type NodeProps,
@@ -51,17 +52,17 @@ function TopicNode({ data }: NodeProps) {
   return (
     <div className={cls} title={d.summary}>
       <Handle type="target" position={Position.Top} className="ghandle" isConnectable={d.editable} />
-      {d.pinned && <span className="pin" title="Закреплена автором на своём месте в маршруте">📌</span>}
+      {d.pinned && <span className="pin" title="Закреплена автором на своём месте в маршруте"><Icon name="pin" /></span>}
       {d.showStatus && d.rank != null && <span className="rank">#{d.rank + 1}</span>}
       {(side || encounter) && (
-        <div className="gkind">{encounter ? (d.encounter === "recall" ? "🎲 Случайная встреча" : "🌉 Мостик на пути") : "✨ Побочный квест"}</div>
+        <div className="gkind">{encounter ? (d.encounter === "recall" ? "Случайная встреча" : "Мостик на пути") : "Побочный квест"}</div>
       )}
       {d.cover ? (
         <div className="gtitle-row"><img className="gcover" src={d.cover} alt="" /><div className="gtitle">{d.title}</div></div>
       ) : <div className="gtitle">{d.title}</div>}
       {(side || encounter) && (
         <div className="gmeta">
-          {d.offered ? <span className="badge side">новое</span> : d.completed ? <span className="badge success">✓ пройдено</span> : (
+          {d.offered ? <span className="badge side">новое</span> : d.completed ? <span className="badge success"><Icon name="check" /> пройдено</span> : (
             <span className="badge side">{(d.stage && STAGE_SHORT[d.stage]) || "в процессе"}</span>
           )}
         </div>
@@ -69,13 +70,13 @@ function TopicNode({ data }: NodeProps) {
       {d.showStatus && !side && !encounter && (
         <div className="gmeta">
           {d.completed ? (
-            <span className="badge success">✓ пройдено</span>
+            <span className="badge success"><Icon name="check" /> пройдено</span>
           ) : d.stage ? (
             <span className="badge accent">{STAGE_NAMES[d.stage] ?? d.stage}</span>
           ) : d.unlocked ? (
             <span className="badge accent">доступно</span>
           ) : (
-            <span className="badge">🔒 закрыто</span>
+            <span className="badge"><Icon name="lock" /> закрыто</span>
           )}
           {d.isNext && <span className="badge accent">→ дальше</span>}
           {mode && <span className={`badge ${mode.cls}`}>{mode.label}</span>}

@@ -8,7 +8,7 @@ export type Edge = { source: number; target: number };
 
 export type CourseFull = {
   id: number; title: string; description: string; domain: string; status: string; status_detail: string; summary: string;
-  tools: string[]; published: boolean; enrolled: boolean; materials: Material[]; route_settings: RouteSettings;
+  tools: string[]; published: boolean; enrolled: boolean; is_author: boolean; materials: Material[]; route_settings: RouteSettings;
   nodes: TopicNode[];
   edges: Edge[];
 };

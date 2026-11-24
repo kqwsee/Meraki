@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
+import Brand from "../components/Brand";
+import { Icon } from "../components/Icon";
 import { ErrorBox } from "../components/ui";
 
 export default function Login() {
-  const { user, login, register } = useAuth();
-  const nav = useNavigate();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const { user, login, register, loading } = useAuth();
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  const mode = params.get("mode") === "register" ? "register" : "login";
+  const from = typeof location.state?.from === "string" ? location.state.from : "/courses";
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -15,7 +19,12 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to={from} replace />;
+
+  function selectMode(value: "login" | "register") {
+    setError(null);
+    setParams(value === "register" ? { mode: value } : {}, { replace: true, state: location.state });
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,7 +33,6 @@ export default function Login() {
     try {
       if (mode === "login") await login(email, password);
       else await register({ email, name, password, role, consent });
-      nav("/");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -33,17 +41,16 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-wrap">
+    <main className="auth-wrap">
       <div className="auth-card">
         <div className="auth-hero">
-          <img src="/favicon.svg" alt="" />
-          <h1>Учись с <span className="gradient-text">ИИ‑наставником</span></h1>
-          <p>Пролог, лекция, практика и экзамен — по твоему личному маршруту в графе знаний.</p>
+          <Brand />
+          <h1>{mode === "login" ? "Вход в Meraki" : "Создать аккаунт"}</h1>
         </div>
         <div className="card">
           <div className="tabs mb">
-            <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Вход</button>
-            <button className={mode === "register" ? "active" : ""} onClick={() => setMode("register")}>Регистрация</button>
+            <button aria-pressed={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => selectMode("login")}>Вход</button>
+            <button aria-pressed={mode === "register"} className={mode === "register" ? "active" : ""} onClick={() => selectMode("register")}>Регистрация</button>
           </div>
           <ErrorBox error={error} />
           <form className="col" onSubmit={submit}>
@@ -87,12 +94,13 @@ export default function Login() {
                 </label>
               </>
             )}
-            <button className="btn primary lg" disabled={busy || (mode === "register" && !consent)}>
-              {busy ? <span className="spinner" /> : mode === "login" ? "Войти" : "Создать аккаунт"}
+            <button className="btn primary lg" disabled={loading || busy || (mode === "register" && !consent)}>
+              {busy ? <><span className="spinner" /> {mode === "login" ? "Входим" : "Создаём аккаунт"}</> :
+                <>{mode === "login" ? "Войти" : "Создать аккаунт"} <Icon name="arrowRight" /></>}
             </button>
           </form>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

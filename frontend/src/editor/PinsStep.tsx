@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Loading, Modal } from "../components/ui";
@@ -5,9 +6,9 @@ import MaterialViewer, { type Highlight, type TextSelection } from "./MaterialVi
 import { plural, type CourseFull, type Excerpt, type ExcerptKind, type ExcerptLimits, type TopicNode, type UseIn } from "./types";
 
 const CARD_KIND: Record<string, { icon: string; label: string; badge: string }> = {
-  topic: { icon: "📖", label: "Тема", badge: "accent" },
-  practice: { icon: "✏️", label: "Практика", badge: "warning" },
-  exam: { icon: "🏁", label: "Экзамен", badge: "bridge" },
+  topic: { icon: "book", label: "Тема", badge: "accent" },
+  practice: { icon: "note", label: "Практика", badge: "warning" },
+  exam: { icon: "flag", label: "Экзамен", badge: "bridge" },
 };
 const cardKind = (e: Pick<Excerpt, "kind" | "use_in">) => CARD_KIND[e.kind === "topic" ? "topic" : e.use_in === "exam" ? "exam" : "practice"];
 const hlClass = (e: Excerpt) => (e.kind === "topic" ? "hl-topic" : e.use_in === "exam" ? "hl-exam" : "hl-task");
@@ -118,7 +119,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
       await reload();
       hide();
       setSelectedPin(e.id);
-      setToast({ text: `${cardKind(e).icon} Закреплено за темой «${titleOf(activeNode)}»`, undoId: e.id });
+      setToast({ text: `Закреплено за темой «${titleOf(activeNode)}»`, undoId: e.id });
     } catch (err: any) {
       onError(err.message);
     }
@@ -170,7 +171,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
     return (
       <div key={e.id} id={`pin-${e.id}`} className={`pin-card ${e.id === selectedPin ? "on" : ""}`} onClick={() => setSelectedPin(e.id)}>
         <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
-          <span className={`badge ${k.badge}`}>{k.icon} {k.label}</span>
+          <span className={`badge ${k.badge}`}><Icon name={k.icon} /> {k.label}</span>
           <b className="pin-title" title={e.title}>{e.title}</b>
           <span className="spacer" />
           <button className="icon-btn" title="Выше" disabled={j <= 0} onClick={(ev) => { ev.stopPropagation(); move(sameKind, j, -1); }}>↑</button>
@@ -184,7 +185,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
           {e.source && <span className="pin-src" title={e.source}>{e.source}</span>}
           <span className="spacer" />
           {e.material_id != null && e.char_start != null && (
-            <button className="link-btn" onClick={(ev) => { ev.stopPropagation(); showInText(e); }}>показать в тексте ↗</button>
+            <button className="link-btn" onClick={(ev) => { ev.stopPropagation(); showInText(e); }}>показать в тексте <Icon name="external" /></button>
           )}
         </div>
       </div>
@@ -195,7 +196,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
     return (
       <div className="card">
         <div className="empty">
-          <div style={{ fontSize: 30, marginBottom: 8 }}>📄</div>
+          <span className="icon-frame mb"><Icon name="file" /></span>
           <b>Сначала добавьте материалы</b>
           <p className="small" style={{ margin: "6px auto 14px", maxWidth: 440 }}>
             Здесь вы откроете загруженный PDF или Word, выделите нужные абзацы, главы или задачи и закрепите их за темой.
@@ -213,7 +214,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
         <div className="row mb" style={{ gap: 8 }}>
           <select value={materialId ?? ""} onChange={(e) => setMaterialId(Number(e.target.value))} style={{ flex: "1 1 220px", width: "auto", minWidth: 0 }}>
             {materials.map((m) => (
-              <option key={m.id} value={m.id}>{m.filename}{perMaterial(m.id) ? `  ·  🎯 ${perMaterial(m.id)}` : ""}</option>
+              <option key={m.id} value={m.id}>{m.filename}{perMaterial(m.id) ? ` · фрагментов: ${perMaterial(m.id)}` : ""}</option>
             ))}
           </select>
           <div className="find-box">
@@ -245,7 +246,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
         <div className="card">
           <div className="eyebrow">Обязательное содержание</div>
           <p className="small muted" style={{ margin: "6px 0 12px" }}>
-            Выделите в тексте слева абзацы, главы или задачи: <b>📖 тема</b> ИИ обязательно разберёт на лекции, <b>✏️🏁 задание</b> даст ученику
+            Выделите в тексте слева абзацы, главы или задачи: <b>тема</b> ИИ обязательно разберёт на лекции, <b>задание</b> даст ученику
             почти без изменений. Всё остальное ИИ подберёт сам.
           </p>
 
@@ -289,7 +290,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
             {topics.length > 0 && (
               <div className="col" style={{ gap: 8 }}>
                 <div className="pins-group-title">
-                  <span>📖 Обязательные темы</span>
+                  <span><Icon name="book" /> Обязательные темы</span>
                   <span className={topicChars > limits.theory_budget ? "warn" : ""}>{fmt(topicChars)} / {fmt(limits.theory_budget)} зн.</span>
                 </div>
                 {topicChars > limits.theory_budget && (
@@ -302,7 +303,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
             )}
             {tasks.length > 0 && (
               <div className="col" style={{ gap: 8, marginTop: topics.length ? 16 : 0 }}>
-                <div className="pins-group-title"><span>✏️ Обязательные задания</span><span>{tasks.length}</span></div>
+                <div className="pins-group-title"><span><Icon name="note" /> Обязательные задания</span><span>{tasks.length}</span></div>
                 {tasks.map((e, i) => card(e, tasks, i))}
               </div>
             )}
@@ -319,7 +320,7 @@ export default function PinsStep({ course, order, excerpts, limits, reload, relo
                 return (
                   <button key={n.id} className="topic-row" onClick={() => setActiveNode(n.id)}>
                     <span className="t">{n.title}</span>
-                    <span className="small muted">📖 {t} · ✏️ {list.length - t}</span>
+                    <span className="small muted">Тем: {t} · Заданий: {list.length - t}</span>
                   </button>
                 );
               })}
@@ -383,11 +384,11 @@ function SelectionToolbar({ sel, topic, limits, onPin, onClose }: {
       </div>
       <div className="row" style={{ gap: 6 }}>
         <button className="btn sm primary" disabled={off || tooBigTopic} title={tooBigTopic ? `Не больше ${fmt(limits.topic_chars)} знаков` : "ИИ разберёт это на лекции почти дословно"}
-          onClick={() => onPin("topic", "")}>📖 Обязательная тема</button>
+          onClick={() => onPin("topic", "")}><Icon name="book" /> Обязательная тема</button>
         <button className="btn sm" disabled={off || tooBigTask} title={tooBigTask ? `Задание не больше ${fmt(limits.task_chars)} знаков` : "Ученик получит это задание в практике"}
-          onClick={() => onPin("task", "practice")}>✏️ Задание в практику</button>
+          onClick={() => onPin("task", "practice")}><Icon name="note" /> Задание в практику</button>
         <button className="btn sm" disabled={off || tooBigTask} title={tooBigTask ? `Задание не больше ${fmt(limits.task_chars)} знаков` : "Это задание попадёт на экзамен"}
-          onClick={() => onPin("task", "exam")}>🏁 В экзамен</button>
+          onClick={() => onPin("task", "exam")}><Icon name="flag" /> В экзамен</button>
         <button className="icon-btn" title="Снять выделение" onClick={onClose}>✕</button>
       </div>
     </div>
@@ -421,8 +422,8 @@ function PinEditor({ excerpt, order, limits, onClose, onSaved, onError }: {
         <div className="field">
           Что это
           <div className="tabs">
-            <button className={kind === "topic" ? "active" : ""} onClick={() => setKind("topic")}>📖 Обязательная тема</button>
-            <button className={kind === "task" ? "active" : ""} onClick={() => setKind("task")}>✏️ Обязательное задание</button>
+            <button className={kind === "topic" ? "active" : ""} onClick={() => setKind("topic")}><Icon name="book" /> Обязательная тема</button>
+            <button className={kind === "task" ? "active" : ""} onClick={() => setKind("task")}><Icon name="note" /> Обязательное задание</button>
           </div>
         </div>
         {kind === "task" && (
