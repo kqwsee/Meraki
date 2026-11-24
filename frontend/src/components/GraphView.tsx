@@ -1,3 +1,4 @@
+import { useColorMode } from "../theme";
 import { Icon } from "./Icon";
 import dagre from "@dagrejs/dagre";
 import {
@@ -111,6 +112,7 @@ export default function GraphView({
   onConnect?: (source: number, target: number) => void;
   onEdgeClick?: (source: number, target: number) => void;
 }) {
+  const colorMode = useColorMode();
   const { rfNodes, rfEdges } = useMemo(() => {
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 64 });
@@ -126,7 +128,7 @@ export default function GraphView({
         g.setEdge(String(n.id), String(ordered[i + 1].id));
         hints.push({
           id: `h${n.id}`, source: String(n.id), target: String(ordered[i + 1].id), selectable: false,
-          style: { strokeDasharray: "6 4", stroke: "#a79bd0" }, animated: true,
+          style: { strokeDasharray: "6 4", stroke: "var(--bridge)" }, animated: true,
         });
       }
     });
@@ -143,7 +145,7 @@ export default function GraphView({
     const rfEdges: Edge[] = [
       ...edges.map((e) => {
         if (e.soft) {
-          const color = e.soft === "side" ? "#cfb47c" : "#a79bd0";
+          const color = e.soft === "side" ? "var(--warning)" : "var(--bridge)";
           return {
             id: `s${e.source}-${e.target}`, source: String(e.source), target: String(e.target), selectable: false,
             markerEnd: { type: MarkerType.ArrowClosed, color, width: 12, height: 12 },
@@ -156,8 +158,8 @@ export default function GraphView({
           target: String(e.target),
           className: editable ? "gedge-editable" : undefined,
           interactionWidth: editable ? 18 : 0,
-          markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(107, 173, 165, 0.7)", width: 16, height: 16 },
-          style: { stroke: "rgba(107, 173, 165, 0.55)", strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "var(--accent)", width: 16, height: 16 },
+          style: { stroke: "var(--accent-line)", strokeWidth: 1.5 },
         };
       }),
       ...hints,
@@ -171,7 +173,7 @@ export default function GraphView({
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
-        colorMode="dark"
+        colorMode={colorMode}
         fitView
         fitViewOptions={{ padding: 0.08, maxZoom: 1.05, minZoom: 0.6 }}
         minZoom={0.25}
@@ -179,14 +181,14 @@ export default function GraphView({
         nodesDraggable={false}
         nodesConnectable={editable}
         elementsSelectable={editable}
-        connectionLineStyle={{ stroke: "#5ceac9", strokeWidth: 2 }}
+        connectionLineStyle={{ stroke: "var(--accent)", strokeWidth: 2 }}
         connectionRadius={40}
         onConnect={(c: Connection) => c.source && c.target && onConnect?.(Number(c.source), Number(c.target))}
         onEdgeClick={(_, e) => !e.id.startsWith("h") && !e.id.startsWith("s") && onEdgeClick?.(Number(e.source), Number(e.target))}
         onNodeClick={(_, n) => onSelect?.(nodes.find((x) => String(x.id) === n.id)!)}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={22} color="rgba(255, 255, 255, 0.07)" />
+        <Background gap={22} color="var(--border)" />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

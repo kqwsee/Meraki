@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../components/Icon";
+import ThemePicker from "../components/ThemePicker";
 import Markdown from "../components/Markdown";
 import MemoryGraph from "../components/MemoryGraph";
 import { ErrorBox, Loading, Modal } from "../components/ui";
@@ -195,6 +196,8 @@ export default function Profile() {
           </div>
         </section>
       </div>
+
+      <ThemePicker />
 
       <section className="card profile-panel" aria-labelledby="profile-notes-title">
         <header className="profile-panel-head">

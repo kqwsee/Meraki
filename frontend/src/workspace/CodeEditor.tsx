@@ -1,3 +1,4 @@
+import { useColorMode } from "../theme";
 import { cpp } from "@codemirror/lang-cpp";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
@@ -35,6 +36,7 @@ function langFor(path: string) {
 export default function CodeEditor({ path, value, onChange, readOnly }: {
   path: string; value: string; onChange: (v: string) => void; readOnly?: boolean;
 }) {
+  const colorMode = useColorMode();
   const rec = useMemo(() => new TypingRecorder(`file:${path}`, "editor"), [path]);
   const extensions = useMemo(
     () => [
@@ -80,7 +82,7 @@ export default function CodeEditor({ path, value, onChange, readOnly }: {
       extensions={extensions}
       onChange={onChange}
       readOnly={readOnly}
-      theme="dark"
+      theme={colorMode}
       basicSetup={{ foldGutter: true, highlightActiveLine: true, autocompletion: true }}
     />
   );
