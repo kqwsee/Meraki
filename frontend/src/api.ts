@@ -38,21 +38,41 @@ async function handle<T>(res: Response): Promise<T> {
     setToken(null);
     if (!location.pathname.startsWith("/login")) location.href = "/login";
   }
+  const where = res.url ? res.url.replace(location.origin, "") : "";
   if (!res.ok) {
-    let msg = `Ошибка ${res.status}`;
+    let msg = `Ошибка ${res.status}${where ? ` (${where})` : ""}`;
     try {
       const data = await res.json();
       msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? data);
     } catch {
-      /* not json */
+      // A dev server answers unknown /api paths with index.html, so "Unexpected token '<'" is not
+      // a data error: it almost always means the backend was not restarted or the route is missing.
+      if ((res.headers.get("content-type") || "").includes("text/html")) {
+        msg = htmlInsteadOfJsonMessage(where);
+      }
     }
     throw new ApiError(res.status, msg);
+  }
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(res.status, htmlInsteadOfJsonMessage(where));
   }
   return res.json() as Promise<T>;
 }
 
+function htmlInsteadOfJsonMessage(where: string): string {
+  return (
+    `Сервер вернул страницу вместо данных${where ? ` по адресу ${where}` : ""}. ` +
+    "Обычно это значит, что backend не успел перезапуститься или вкладка была открыта до перезапуска. " +
+    "Обновите страницу (Ctrl+F5); если ошибка повторяется — перезапустите backend."
+  );
+}
+
 export const api = {
-  get: <T = any>(url: string) => fetch(`/api${url}`, { headers: headers(false) }).then((r) => handle<T>(r)),
+  // no-store: profile/talent/writing views poll in a loop, and a heuristically cached GET would
+  // silently freeze the live numbers in a long-open tab
+  get: <T = any>(url: string) =>
+    fetch(`/api${url}`, { headers: headers(false), cache: "no-store" }).then((r) => handle<T>(r)),
   post: <T = any>(url: string, body?: unknown) =>
     fetch(`/api${url}`, { method: "POST", headers: headers(), body: JSON.stringify(body ?? {}) }).then((r) => handle<T>(r)),
   put: <T = any>(url: string, body?: unknown) =>

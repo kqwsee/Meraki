@@ -13,7 +13,10 @@ const KnowledgeMap = lazy(() => import("./pages/KnowledgeMap"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const NodePage = lazy(() => import("./pages/NodePage"));
 const Profile = lazy(() => import("./pages/Profile"));
+const ProfileSectionPage = lazy(() => import("./pages/ProfileSectionPage"));
 const Reviews = lazy(() => import("./pages/Reviews"));
+const TalentDetailPage = lazy(() => import("./pages/TalentDetailPage"));
+const TalentsPage = lazy(() => import("./pages/TalentsPage"));
 
 function Shell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   const { user, logout } = useAuth();
@@ -78,6 +81,9 @@ export default function App() {
       <Route path="/encounters/:id" element={<Private><Encounter /></Private>} />
       <Route path="/profile" element={<Private><Profile /></Private>} />
       <Route path="/profile/graph" element={<Private wide><KnowledgeMap /></Private>} />
+      <Route path="/profile/talents" element={<Private><TalentsPage /></Private>} />
+      <Route path="/profile/talents/:talent" element={<Private><TalentDetailPage /></Private>} />
+      <Route path="/profile/sections/:section" element={<Private><ProfileSectionPage /></Private>} />
       <Route path="/reviews" element={<Private><Reviews /></Private>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -14,9 +14,13 @@ type Props = {
   compact?: boolean;
   placeholder?: string;
   copySource?: string;
+  /** Message opened from the talent evidence page: scroll to it and mark it. */
+  focusMessageId?: number | null;
 };
 
-export default function Chat({ nodeId, courseId, stage, initial, autoStart, compact, placeholder, copySource = "tutor" }: Props) {
+export default function Chat({
+  nodeId, courseId, stage, initial, autoStart, compact, placeholder, copySource = "tutor", focusMessageId = null,
+}: Props) {
   const [messages, setMessages] = useState<Msg[]>(initial);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,6 +37,13 @@ export default function Chat({ nodeId, courseId, stage, initial, autoStart, comp
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // arriving from a talent-evidence link: centre the exact message instead of jumping to the end
+  useEffect(() => {
+    if (focusMessageId == null) return;
+    const el = document.getElementById(`message-${focusMessageId}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focusMessageId, messages.length]);
 
   // the input grows with the text (up to the CSS max-height) instead of a fixed two-line box
   useEffect(() => {
@@ -82,6 +93,7 @@ export default function Chat({ nodeId, courseId, stage, initial, autoStart, comp
   function submit() {
     const text = draft.trim();
     if (!text || busy) return;
+    rec.sync("");
     setDraft("");
     send(text);
   }
@@ -101,7 +113,11 @@ export default function Chat({ nodeId, courseId, stage, initial, autoStart, comp
     <div className={`chat ${compact ? "chat-compact" : ""}`}>
       <div className="chat-messages" ref={scroller} data-copy-source={copySource}>
         {messages.map((m) => (
-          <div key={m.id} className={`msg ${m.role}`}>
+          <div
+            key={m.id}
+            id={typeof m.id === "number" ? `message-${m.id}` : undefined}
+            className={`msg ${m.role}${focusMessageId != null && m.id === focusMessageId ? " focus" : ""}`}
+          >
             {m.role === "assistant" ? (
               m.content ? (
                 <>

@@ -1,14 +1,21 @@
 import type { ReactNode } from "react";
 
-export function Modal({ title, onClose, children, footer, wide }: {
+export function Modal({ title, onClose, children, footer, wide, action, className }: {
   title: string; onClose: () => void; children: ReactNode; footer?: ReactNode;
   /** Take up ~70% of the viewport (width and height) — for reading long content like notes. */
   wide?: boolean;
+  /** Small link/button in the top-right corner of the title row (e.g. "Подробнее →"). */
+  action?: ReactNode;
+  /** Extra class on the dialog, for content that needs its own width (see .modal-graph-history). */
+  className?: string;
 }) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${wide ? "wide" : ""}`} role="dialog" aria-label={title}>
-        <h2>{title}</h2>
+      <div className={`modal ${wide ? "wide" : ""} ${className ?? ""}`} role="dialog" aria-label={title}>
+        <div className="modal-head">
+          <h2>{title}</h2>
+          {action && <div className="modal-action">{action}</div>}
+        </div>
         {children}
         {footer && <div className="row mt" style={{ justifyContent: "flex-end" }}>{footer}</div>}
       </div>

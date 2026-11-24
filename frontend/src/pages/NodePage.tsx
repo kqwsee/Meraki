@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import Chat, { type Msg } from "../components/Chat";
 import Markdown from "../components/Markdown";
@@ -66,6 +66,10 @@ const JOB_TEXT: Record<string, string> = {
 export default function NodePage() {
   const { nodeId } = useParams();
   const id = Number(nodeId);
+  const [params] = useSearchParams();
+  // talent evidence links carry ?stage=…&message=… so the exact learner message is opened and marked
+  const stageParam = params.get("stage");
+  const messageParam = Number(params.get("message")) || null;
   const [st, setSt] = useState<State | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<string | null>(null);
@@ -88,7 +92,8 @@ export default function NodePage() {
 
   const side = st?.node.kind === "side";
   const current = st?.progress.stage ?? "prologue";
-  const viewing = view ?? (current === "done" ? (side ? "practice" : "exam") : current);
+  const stageFromLink = stageParam && (side ? SIDE_ORDER : ORDER).includes(stageParam) ? stageParam : null;
+  const viewing = view ?? stageFromLink ?? (current === "done" ? (side ? "practice" : "exam") : current);
 
   useEffect(() => {
     if (!st || viewing === "exam") return; // ExamStage owns the exam context (task + attempt)
@@ -176,6 +181,7 @@ export default function NodePage() {
               courseId={st.course.id}
               stage={viewing as "prologue" | "lecture"}
               initial={st.messages[viewing as "prologue" | "lecture"]}
+              focusMessageId={messageParam}
               autoStart={viewing === current}
               placeholder={viewing === "prologue" ? "Отвечай как думаешь — это не экзамен…" : undefined}
             />
@@ -273,7 +279,7 @@ export default function NodePage() {
             </>
           }
           helper={<Chat key="practice" nodeId={id} courseId={st.course.id} stage="practice" initial={st.messages.practice} compact copySource="tutor"
-            placeholder="Спроси помощника: что непонятно, где застрял(а)…" />}
+            placeholder="Спроси помощника: что непонятно, где застрял(а)…" focusMessageId={messageParam} />}
         />
       )}
 

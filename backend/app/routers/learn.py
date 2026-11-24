@@ -15,7 +15,7 @@ from ..llm import LLMError, get_llm
 from ..models import Course, Enrollment, ExamAttempt, GraphNode, Message, ReviewCard, Task, User
 from ..security import current_user
 from ..services import context as ctx
-from ..services import assets, custom_tools, integrity, learning, visuals
+from ..services import assets, custom_tools, integrity, learning, talents, visuals
 from ..services import path as route
 
 log = logging.getLogger("meraki.learn")
@@ -161,6 +161,7 @@ async def chat(node_id: int, stage: str, body: ChatIn, user: User = Depends(curr
             raise HTTPException(409, "Этап уже начат")
     if body.content is None and stage in ("prologue", "lecture"):
         await learning.refresh_memory(user.id, node_id)  # MemPalace: read once per stage start
+    user_message_id: int | None = None
     with SessionLocal() as db:
         db_user = db.get(User, user.id)
         node = db.get(GraphNode, node_id)
@@ -169,9 +170,16 @@ async def chat(node_id: int, stage: str, body: ChatIn, user: User = Depends(curr
             text = body.content.strip()[:8000]
             if not text:
                 raise HTTPException(400, "Пустое сообщение")
-            db.add(Message(user_id=user.id, node_id=node_id, stage=stage, role="user", content=text, meta={"typing": body.typing or {}}))
+            message = Message(
+                user_id=user.id, node_id=node_id, stage=stage, role="user", content=text, meta={"typing": body.typing or {}}
+            )
+            db.add(message)
             db.commit()
+            user_message_id = message.id
         system, prompt = learning.chat_prompts(db, db_user, node, stage, body.content)
+    if user_message_id is not None:
+        # immediate, debounced: the talent page updates while the tutor's answer is still streaming
+        talents.schedule_analysis(user.id, [user_message_id])
 
     async def gen():
         full = ""

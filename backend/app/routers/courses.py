@@ -6,11 +6,15 @@ from sqlalchemy.orm import Session
 
 from ..background import spawn
 from ..db import get_db
-from ..models import Course, CourseMaterial, Enrollment, GraphEdge, GraphNode, LearnerPath, NodeProgress, PinnedExcerpt, TopicVisual, User
+from ..models import (
+    Course, CourseMaterial, Enrollment, GraphEdge, GraphNode, GraphVersion, LearnerPath, LearnerPathVersion,
+    NodeProgress, PinnedExcerpt, TopicVisual, User,
+)  # fmt: skip
 from ..config import settings
 from ..prompts import DOMAINS, TOOL_CATALOG
 from ..security import current_user, require_author
 from ..services import adventures, assets, materials
+from ..services import graph_versions as graph_history
 from ..services.context import course_progress
 from ..services.course_builder import build_course_graph
 from ..services.fetcher import fetch_material
@@ -163,6 +167,97 @@ def get_course(course_id: int, user: User = Depends(current_user), db: Session =
         "route": {"message": view["message"], "replans": view["replans"], "next_node_id": next_id},
         "adventures": {**adventures_view, "dev": settings.adventure_dev_tools},
     }
+
+
+def _version_meta(v: GraphVersion) -> dict:
+    return {
+        "id": v.id, "version": v.version, "is_current": False, "created_at": v.created_at.isoformat(),
+        "summary": v.summary, "reason": v.reason, "topics": len(v.nodes or []), "links": len(v.edges or []),
+    }  # fmt: skip
+
+
+@router.get("/courses/{course_id}/graph-versions")
+def list_graph_versions(course_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Every variant of the course graph. The live one is actual; the rest are read-only history.
+
+    Visible to everyone who can see the course: the graph may have been rebuilt between visits, and
+    a learner should be able to see how the map they study on came to be.
+    """
+    course = _visible_course(db, course_id, user)
+    rows = db.scalars(
+        select(GraphVersion).where(GraphVersion.course_id == course_id).order_by(GraphVersion.version.desc())
+    ).all()
+    nodes, edges = graph_history.snapshot(db, course_id)
+    return {
+        "current": {
+            "version": graph_history.next_number(db, course_id), "is_current": True, "created_at": None,
+            "summary": course.summary, "reason": "Актуальная версия: её видят ученики",
+            "nodes": nodes, "edges": edges,
+        },
+        "items": [_version_meta(v) for v in rows],
+    }
+
+
+@router.get("/courses/{course_id}/graph-versions/{version}")
+def get_graph_version(course_id: int, version: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _visible_course(db, course_id, user)
+    row = db.scalar(
+        select(GraphVersion).where(GraphVersion.course_id == course_id, GraphVersion.version == version)
+    )
+    if row is None:
+        raise HTTPException(404, "Версия графа не найдена")
+    return {**_version_meta(row), "nodes": row.nodes or [], "edges": row.edges or []}
+
+
+def _route_version_meta(v: LearnerPathVersion) -> dict:
+    return {
+        "id": v.id, "version": v.version, "is_current": False, "created_at": v.created_at.isoformat(),
+        "message": v.message, "reason": v.reason, "topics": len(v.nodes or []), "links": len(v.edges or []),
+    }  # fmt: skip
+
+
+def _enrolled(db: Session, course_id: int, user: User) -> None:
+    enrolled = db.scalar(select(Enrollment).where(Enrollment.user_id == user.id, Enrollment.course_id == course_id))
+    if enrolled is None:
+        raise HTTPException(404, "Вы не записаны на этот курс")
+
+
+@router.get("/courses/{course_id}/route-versions")
+def list_route_versions(course_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The learner's own route history — nobody sees anyone else's personal map."""
+    _visible_course(db, course_id, user)
+    _enrolled(db, course_id, user)
+    rows = db.scalars(
+        select(LearnerPathVersion)
+        .where(LearnerPathVersion.user_id == user.id, LearnerPathVersion.course_id == course_id)
+        .order_by(LearnerPathVersion.version.desc())
+    ).all()
+    nodes, edges = route.route_snapshot(db, user.id, course_id)
+    message = route.ensure_path(db, user.id, course_id).message
+    db.commit()
+    return {
+        "current": {
+            "version": route.next_route_version(db, user.id, course_id), "is_current": True, "created_at": None,
+            "message": message, "reason": "Актуальный маршрут: по нему вы идёте", "nodes": nodes, "edges": edges,
+        },
+        "items": [_route_version_meta(v) for v in rows],
+    }
+
+
+@router.get("/courses/{course_id}/route-versions/{version}")
+def get_route_version(course_id: int, version: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _visible_course(db, course_id, user)
+    _enrolled(db, course_id, user)
+    row = db.scalar(
+        select(LearnerPathVersion).where(
+            LearnerPathVersion.user_id == user.id,
+            LearnerPathVersion.course_id == course_id,
+            LearnerPathVersion.version == version,
+        )
+    )
+    if row is None:
+        raise HTTPException(404, "Версия маршрута не найдена")
+    return {**_route_version_meta(row), "nodes": row.nodes or [], "edges": row.edges or []}
 
 
 @router.patch("/courses/{course_id}")
